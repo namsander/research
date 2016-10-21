@@ -90,7 +90,7 @@ typedef struct
     int fifoWriteIdx;
 
     eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE flyingState;
-
+    vector<Rect> rectDetected;	//検出された矩形の座標
     FILE *video_out;
 
     ARSAL_Mutex_t mutex;
@@ -156,6 +156,6 @@ void onInputEvent (eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat in
 int customPrintCallback (eARSAL_PRINT_LEVEL level, const char *tag, const char *format, va_list va);
 
 /** Image processing part **/
-void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascade,HOGDescriptor hog);
+void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascade,HOGDescriptor hog,BD_MANAGER_t *deviceManager);
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat InfoWindow);
 #endif /* _SDK_EXAMPLE_BD_H_ */

@@ -350,7 +350,7 @@ void* Decode_RunDataThread(void *customData)
                 //2フレームに一度処理を行う
                 if(!flag){
                 	flag = 1;
-                	imageProc(decodedFrame,faceCascade,hog);	//YuvからBGRに変換したMat作成
+                	imageProc(decodedFrame,faceCascade,hog,deviceManager);	//YuvからBGRに変換したMat作成
                 }else{
                 	flag = 0;
                 }
@@ -454,7 +454,6 @@ int main (int argc, char *argv[])
     int failed = 0;
     BD_MANAGER_t *deviceManager = static_cast<BD_MANAGER_t *>(malloc(sizeof(BD_MANAGER_t)));
     pid_t child = 0;
-
     /* Set signal handlers */
     struct sigaction sig_action = {};
     sig_action.sa_handler = signal_handler;
@@ -1806,7 +1805,7 @@ int customPrintCallback (eARSAL_PRINT_LEVEL level, const char *tag, const char *
 }
 
 /************************** Image processing part **************************/
-void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascade,HOGDescriptor hog){
+void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascade,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	unsigned int height = 368;
 	unsigned int width = 640;
 	unsigned int yHeight = 368;
@@ -1831,8 +1830,8 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 		index++;
 	}
 
-	//cascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(60,60));
-	hog.detectMultiScale(yComp,faces,0,Size(),Size(),1.05,5,false);
+	cascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(60,60));
+	//hog.detectMultiScale(yComp,faces,0,Size(),Size(),1.05,5,false);
 	if(faces.size()){
 		ssRecSize << "X:" << faces[0].width << "Y:" << faces[0].height;
 		putText(yComp,ssRecSize.str(),Point((faces[0].x)-20,(faces[0].y)-20),0,0.5,Scalar(255,255,255));
@@ -1847,7 +1846,7 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 
 	//merge(splitYUV,yuvImage);
 	//cvtColor(yuvImage,bgrImage,CV_YCrCb2BGR);
-
+	deviceManager->rectDetected = faces;	//検出された矩形情報をdeviceManagerに渡す
 	imshow("frame",yComp);
 	waitKey(1);
 	return;
@@ -1855,10 +1854,12 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 /************************** Autonomous flying part **************************/
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat infoWindow){
 	 // Manage IHM input events
-	stringstream pitch;
-	pitch << "tilt:" <<deviceManager->dataCam.tilt;
+	stringstream pitchSS,coordDetectedSS;
+	pitchSS << "tilt:" <<deviceManager->dataCam.tilt;
+	coordDetectedSS << "x:" << deviceManager->rectDetected.size();
 	putText(infoWindow,"autonomous flying",Point(184,320),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
-	putText(infoWindow,pitch.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+	putText(infoWindow,pitchSS.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+	putText(infoWindow,coordDetectedSS.str(),Point(200,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 	    switch (event)
 	    {
 	    case IHM_INPUT_EVENT_EXIT:
