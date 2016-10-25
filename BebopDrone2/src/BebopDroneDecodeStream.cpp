@@ -1839,6 +1839,14 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 
 	for(int i = 0;i < faces.size();i++){
 		rectangle(yComp,Point(faces[i].x,faces[i].y),Point(faces[i].x + faces[i].width,faces[i].y + faces[i].height),255,5);
+		circle(yComp,
+				Point(
+						faces[i].x
+								+ faces[i].width / 2,
+						faces[i].y
+								+ faces[i].height / 2), 3,
+				Scalar(255, 255, 255), -1);
+
 	}
 	//splitYUV[0] = yComp;
 	//splitYUV[1] = uComp;
@@ -1854,12 +1862,53 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 /************************** Autonomous flying part **************************/
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat infoWindow){
 	 // Manage IHM input events
-	stringstream pitchSS,coordDetectedSS;
+	stringstream pitchSS,coordDetectedSS,eventSS;
 	pitchSS << "tilt:" <<deviceManager->dataCam.tilt;
-	coordDetectedSS << "x:" << deviceManager->rectDetected.size();
+	eventSS << "event:" << event;
+	vector<Point> coordDetected;
+
+	int rectSize = deviceManager->rectDetected.size();
+	if (rectSize != 0) {
+		coordDetected.resize(deviceManager->rectDetected.size());
+		for (int i = 0; i < deviceManager->rectDetected.size(); i++) {
+			coordDetected[i].x = deviceManager->rectDetected[i].x
+					+ deviceManager->rectDetected[i].width / 2;
+			coordDetected[i].y = deviceManager->rectDetected[i].y
+					+ deviceManager->rectDetected[i].height / 2;
+		}
+
+		/*
+		 coordDetectedSS << "x:" << deviceManager->rectDetected[0].x << " y:"
+				<< deviceManager->rectDetected[0].y;
+		putText(infoWindow, coordDetectedSS.str(), Point(200, 100), FONT_ITALIC,
+				1.2, Scalar(255, 200, 100), 2, CV_AA);
+				*/
+		for (int i = 0; i < rectSize; i++) {
+			circle(infoWindow,
+					Point(deviceManager->rectDetected[i].x,
+							deviceManager->rectDetected[i].y), 3,
+					Scalar(255, 255, 255), -1);
+			circle(infoWindow, Point(coordDetected[i].x, coordDetected[i].y), 3,
+					Scalar(255, 255, 255), -1);
+			circle(infoWindow,
+					Point(
+							deviceManager->rectDetected[i].x
+									+ deviceManager->rectDetected[i].width,
+							deviceManager->rectDetected[i].y
+									+ deviceManager->rectDetected[i].height), 3,
+					Scalar(255, 255, 255), -1);
+		}
+
+	}
+
 	putText(infoWindow,"autonomous flying",Point(184,320),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 	putText(infoWindow,pitchSS.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
-	putText(infoWindow,coordDetectedSS.str(),Point(200,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+	putText(infoWindow,eventSS.str(),Point(0,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+	line(infoWindow,Point(320,0),Point(320,368),Scalar(255,255,255),2);
+	line(infoWindow,Point(310,0),Point(310,368),Scalar(255,255,255),2);
+	line(infoWindow,Point(330,0),Point(330,368),Scalar(255,255,255),2);
+	rectangle(infoWindow,Point(310,174),Point(330,194),255,5);
+
 	    switch (event)
 	    {
 	    case IHM_INPUT_EVENT_EXIT:
@@ -1981,11 +2030,35 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	    case IHM_INPUT_EVENT_NONE:
 	        if(deviceManager != NULL)
 	        {
-	            deviceManager->dataPCMD.flag = 0;
-	            deviceManager->dataPCMD.roll = 0;
-	            deviceManager->dataPCMD.pitch = 0;
-	            deviceManager->dataPCMD.yaw = 0;
-	            deviceManager->dataPCMD.gaz = 0;
+			if (rectSize != 0) {
+				if (coordDetected[0].x > 330) {
+					deviceManager->dataCam.pan += 1;
+				} else if (coordDetected[0].x < 310) {
+					deviceManager->dataCam.pan -= 1;
+				}
+				if(coordDetected[0].y < 174){
+					deviceManager->dataCam.tilt += 1;
+				}else if(coordDetected[0].y > 194){
+					deviceManager->dataCam.tilt -= 1;
+				}
+				if (deviceManager->dataCam.pan > 80) {
+					deviceManager->dataCam.pan = 80;
+				}
+				if (deviceManager->dataCam.pan < -80) {
+					deviceManager->dataCam.pan = -80;
+				}
+				if (deviceManager->dataCam.tilt > 80) {
+					deviceManager->dataCam.pan = 80;
+				}
+				if (deviceManager->dataCam.tilt < -80) {
+					deviceManager->dataCam.pan = -80;
+				}
+			}
+//	            deviceManager->dataPCMD.flag = 0;
+//	            deviceManager->dataPCMD.roll = 0;
+//	            deviceManager->dataPCMD.pitch = 0;
+//	            deviceManager->dataPCMD.yaw = 0;
+//	            deviceManager->dataPCMD.gaz = 0;
 	        }
 	        break;
 	    default:
