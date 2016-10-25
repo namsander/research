@@ -1935,58 +1935,6 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 
 	        }
 	        break;
-	    case IHM_INPUT_EVENT_FORWARD:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataPCMD.flag = 1;
-	            deviceManager->dataPCMD.pitch = 50;
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_BACK:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataPCMD.flag = 1;
-	            deviceManager->dataPCMD.pitch = -50;
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_RIGHT:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataPCMD.flag = 1;
-	            deviceManager->dataPCMD.roll = 50;
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_LEFT:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataPCMD.flag = 1;
-	            deviceManager->dataPCMD.roll = -50;
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_YAW_RIGHT:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataPCMD.yaw = 50;
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_YAW_LEFT:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataPCMD.yaw = -50;
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_UP:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataPCMD.gaz = 50;
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_DOWN:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataPCMD.gaz = -50;
-	        }
-	        break;
 	    case IHM_INPUT_EVENT_CAM_UP:
 	        if(deviceManager != NULL)
 	        {
@@ -2028,17 +1976,16 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	        }
 	        break;
 	    case IHM_INPUT_EVENT_NONE:
-	        if(deviceManager != NULL)
-	        {
+		if (deviceManager != NULL) {
 			if (rectSize != 0) {
 				if (coordDetected[0].x > 330) {
 					deviceManager->dataCam.pan += 1;
 				} else if (coordDetected[0].x < 310) {
 					deviceManager->dataCam.pan -= 1;
 				}
-				if(coordDetected[0].y < 174){
+				if (coordDetected[0].y < 174) {
 					deviceManager->dataCam.tilt += 1;
-				}else if(coordDetected[0].y > 194){
+				} else if (coordDetected[0].y > 194) {
 					deviceManager->dataCam.tilt -= 1;
 				}
 				if (deviceManager->dataCam.pan > 80) {
@@ -2054,12 +2001,7 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 					deviceManager->dataCam.pan = -80;
 				}
 			}
-//	            deviceManager->dataPCMD.flag = 0;
-//	            deviceManager->dataPCMD.roll = 0;
-//	            deviceManager->dataPCMD.pitch = 0;
-//	            deviceManager->dataPCMD.yaw = 0;
-//	            deviceManager->dataPCMD.gaz = 0;
-	        }
+		}
 	        break;
 	    default:
 	        break;
