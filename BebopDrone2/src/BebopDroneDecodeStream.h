@@ -158,4 +158,7 @@ int customPrintCallback (eARSAL_PRINT_LEVEL level, const char *tag, const char *
 /** Image processing part **/
 void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascade,HOGDescriptor hog,BD_MANAGER_t *deviceManager);
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat InfoWindow);
+void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
+void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
+void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 #endif /* _SDK_EXAMPLE_BD_H_ */

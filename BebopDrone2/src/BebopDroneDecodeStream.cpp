@@ -1830,8 +1830,8 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 		index++;
 	}
 
-	cascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(60,60));
-	//hog.detectMultiScale(yComp,faces,0,Size(),Size(),1.05,5,false);
+	//cascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(60,60));
+	hog.detectMultiScale(yComp,faces,0,Size(),Size(),1.05,5,false);
 	if(faces.size()){
 		ssRecSize << "X:" << faces[0].width << "Y:" << faces[0].height;
 		putText(yComp,ssRecSize.str(),Point((faces[0].x)-20,(faces[0].y)-20),0,0.5,Scalar(255,255,255));
@@ -1977,33 +1977,65 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	        break;
 	    case IHM_INPUT_EVENT_NONE:
 		if (deviceManager != NULL) {
+
 			if (rectSize != 0) {
-				if (coordDetected[0].x > 330) {
-					deviceManager->dataCam.pan += 1;
-				} else if (coordDetected[0].x < 310) {
-					deviceManager->dataCam.pan -= 1;
-				}
-				if (coordDetected[0].y < 174) {
-					deviceManager->dataCam.tilt += 1;
-				} else if (coordDetected[0].y > 194) {
-					deviceManager->dataCam.tilt -= 1;
-				}
-				if (deviceManager->dataCam.pan > 80) {
-					deviceManager->dataCam.pan = 80;
-				}
-				if (deviceManager->dataCam.pan < -80) {
-					deviceManager->dataCam.pan = -80;
-				}
-				if (deviceManager->dataCam.tilt > 80) {
-					deviceManager->dataCam.pan = 80;
-				}
-				if (deviceManager->dataCam.tilt < -80) {
-					deviceManager->dataCam.pan = -80;
-				}
+				//cameraControl(deviceManager,coordDetected);
+				directionControl(deviceManager,coordDetected);
+//				if(coordDetected[0].x > 350){
+//					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+//				}else if(coordDetected[0].x < 300){
+//					putText(infoWindow,"-30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+//				}else{
+//					putText(infoWindow,"0",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+//				}
+			}else{
+				deviceManager->dataPCMD.flag = 0;
+				deviceManager->dataPCMD.roll = 0;
+				deviceManager->dataPCMD.pitch = 0;
+				deviceManager->dataPCMD.yaw = 0;
+				deviceManager->dataPCMD.gaz = 0;
+				deviceManager->dataCam.pan = 0;
+				deviceManager->dataCam.tilt = 0;
 			}
+
 		}
 	        break;
 	    default:
 	        break;
 	    }
+}
+
+void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
+	if (coordDetected[0].x > 330) {
+						deviceManager->dataCam.pan += 1;
+					} else if (coordDetected[0].x < 310) {
+						deviceManager->dataCam.pan -= 1;
+					}
+					if (coordDetected[0].y < 174) {
+						deviceManager->dataCam.tilt += 1;
+					} else if (coordDetected[0].y > 194) {
+						deviceManager->dataCam.tilt -= 1;
+					}
+					if (deviceManager->dataCam.pan > 80) {
+						deviceManager->dataCam.pan = 80;
+					}
+					if (deviceManager->dataCam.pan < -80) {
+						deviceManager->dataCam.pan = -80;
+					}
+					if (deviceManager->dataCam.tilt > 80) {
+						deviceManager->dataCam.pan = 80;
+					}
+					if (deviceManager->dataCam.tilt < -80) {
+						deviceManager->dataCam.pan = -80;
+					}
+}
+void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
+
+	if(coordDetected[0].x > 350){
+		deviceManager->dataPCMD.yaw = 20;
+	}else if(coordDetected[0].x < 300){
+		deviceManager->dataPCMD.yaw = -20;
+	}else{
+		deviceManager->dataPCMD.yaw = 0;
+	}
 }
