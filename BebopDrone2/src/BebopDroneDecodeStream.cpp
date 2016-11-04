@@ -1862,11 +1862,13 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 /************************** Autonomous flying part **************************/
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat infoWindow){
 	 // Manage IHM input events
-	stringstream pitchSS,coordDetectedSS,eventSS;
-	pitchSS << "tilt:" <<deviceManager->dataCam.tilt;
+	stringstream velSS,coordDetectedSS,eventSS;
 	eventSS << "event:" << event;
 	vector<Point> coordDetected;
-
+	//ここから
+	double diff;
+	int vel;
+	//ここまで
 	int rectSize = deviceManager->rectDetected.size();
 	if (rectSize != 0) {
 		coordDetected.resize(deviceManager->rectDetected.size());
@@ -1898,11 +1900,19 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 									+ deviceManager->rectDetected[i].height), 3,
 					Scalar(255, 255, 255), -1);
 		}
+	//ここから
+	diff = ((double)coordDetected[0].x - 320.0);
+	vel = 50.0 * (diff / 320.0);
+	if(fabs(diff) < 20.0){
+		vel = 0;
+	}
+	velSS << "velocity" <<vel;
 
+	putText(infoWindow,velSS.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+	//ここまで
 	}
 
 	putText(infoWindow,"autonomous flying",Point(184,320),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
-	putText(infoWindow,pitchSS.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 	putText(infoWindow,eventSS.str(),Point(0,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 	line(infoWindow,Point(320,0),Point(320,368),Scalar(255,255,255),2);
 	line(infoWindow,Point(310,0),Point(310,368),Scalar(255,255,255),2);
@@ -1980,7 +1990,7 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 
 			if (rectSize != 0) {
 				//cameraControl(deviceManager,coordDetected);
-				directionControl(deviceManager,coordDetected);
+				//directionControl(deviceManager,coordDetected);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
@@ -2030,7 +2040,19 @@ void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 					}
 }
 void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
+	double diff;
+	int vel;
+	diff = (double)coordDetected[0].x - 320.0;
+	vel = 50.0 * (diff / 320.0);
+	if(fabs(diff) < 20.0){
+		vel = 0;
+	}
+	deviceManager->dataPCMD.yaw = vel;
+}
 
+
+void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
+	//未完成　今はdirectionControlと同じ
 	if(coordDetected[0].x > 350){
 		deviceManager->dataPCMD.yaw = 20;
 	}else if(coordDetected[0].x < 300){
