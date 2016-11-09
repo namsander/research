@@ -161,4 +161,5 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat In
 void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
+double pixToDig(const int pix);
 #endif /* _SDK_EXAMPLE_BD_H_ */

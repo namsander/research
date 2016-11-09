@@ -1901,9 +1901,9 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 					Scalar(255, 255, 255), -1);
 		}
 	//ここから
-	diff = ((double)coordDetected[0].x - 320.0);
-	vel = 50.0 * (diff / 320.0);
-	if(fabs(diff) < 20.0){
+	diff = pixToDig(coordDetected[0].x);
+	vel = 100.0 * (diff / pixToDig(640));
+	if(fabs(diff) < pixToDig(340)){
 		vel = 0;
 	}
 	velSS << "velocity" <<vel;
@@ -1990,7 +1990,7 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 
 			if (rectSize != 0) {
 				//cameraControl(deviceManager,coordDetected);
-				//directionControl(deviceManager,coordDetected);
+				directionControl(deviceManager,coordDetected);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
@@ -2042,12 +2042,13 @@ void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 	double diff;
 	int vel;
-	diff = (double)coordDetected[0].x - 320.0;
-	vel = 50.0 * (diff / 320.0);
-	if(fabs(diff) < 20.0){
+	diff = pixToDig(coordDetected[0].x);
+	vel = 100.0 * (diff / pixToDig(640));
+	if(fabs(diff) < pixToDig(340)){
 		vel = 0;
 	}
 	deviceManager->dataPCMD.yaw = vel;
+
 }
 
 
@@ -2060,4 +2061,8 @@ void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 	}else{
 		deviceManager->dataPCMD.yaw = 0;
 	}
+}
+
+double pixToDig(const int pix){
+	return (double)(pix-320)/(640.0/80.9946);
 }
