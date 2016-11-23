@@ -308,17 +308,10 @@ void* Decode_RunDataThread(void *customData)
     unsigned int width;
     unsigned int compHeight[3];
     unsigned int compWidth[3];
-    CascadeClassifier faceCascade;
-    CascadeClassifier fullbodyCascade;
-    CascadeClassifier upperbodyCascade;
-    HOGDescriptor hog = HOGDescriptor();
 
-    faceCascade.load("haarcascade_frontalface_alt.xml");
-    hog.setSVMDetector(HOGDescriptor::getDefaultPeopleDetector());
+	HOGDescriptor hog = HOGDescriptor();
+	hog.setSVMDetector(HOGDescriptor::getDefaultPeopleDetector());
 
-    //fullbodyCascade.load("haarcascade_fullbody.xml");
-    //upperbodyCascade.load("haarcascade_upperbody.xml");
-    bool flag = 0;	//画像処理実行フラグ
     while (!deviceManager->decodingCanceled)
     {
 
@@ -348,11 +341,11 @@ void* Decode_RunDataThread(void *customData)
                 */
 
                 //2フレームに一度処理を行う
-                if(!flag){
-                	flag = 1;
-                	imageProc(decodedFrame,faceCascade,hog,deviceManager);	//YuvからBGRに変換したMat作成
+                if(!deviceManager->imageFlag){
+                	deviceManager->imageFlag = 1;
+                	imageProc(decodedFrame,hog,deviceManager);	//YuvからBGRに変換したMat作成
                 }else{
-                	flag = 0;
+                	deviceManager->imageFlag = 0;
                 }
 
             }
@@ -560,7 +553,14 @@ int main (int argc, char *argv[])
         deviceManager->dataCam.tilt = 0;
         deviceManager->dataCam.pan = 0;
 
-        deviceManager->flyingState = ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_MAX;
+        deviceManager->faceCascade.load("haarcascade_frontalface_alt.xml");
+        deviceManager->fullbodyCascade.load("haarcascade_fullbody.xml");
+        deviceManager->upperbodyCascade.load("haarcascade_upperbody.xml");
+
+		deviceManager->imageFlag = 0;	//画像処理実行フラグ
+
+		deviceManager->flyingState =
+				ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_MAX;
     }
 
     if (!failed)
@@ -1342,12 +1342,18 @@ void registerARCommandsCallbacks (BD_MANAGER_t *deviceManager)
     ARCOMMANDS_Decoder_SetCommonCommonStateBatteryStateChangedCallback(batteryStateChangedCallback, deviceManager);
     ARCOMMANDS_Decoder_SetARDrone3PilotingStateFlyingStateChangedCallback(flyingStateChangedCallback, deviceManager);
     // ADD HERE THE CALLBACKS YOU ARE INTERESTED IN
+    ARCOMMANDS_Decoder_SetARDrone3PilotingStateSpeedChangedCallback(speedChangedCallback,deviceManager);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingStateAttitudeChangedCallback (attitudeChangedCallback,deviceManager);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingStateAltitudeChangedCallback (altitudeChangedCallback,deviceManager);
 }
 
 void unregisterARCommandsCallbacks (void)
 {
     ARCOMMANDS_Decoder_SetCommonCommonStateBatteryStateChangedCallback (NULL, NULL);
     ARCOMMANDS_Decoder_SetARDrone3PilotingStateFlyingStateChangedCallback(NULL, NULL);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingStateSpeedChangedCallback(NULL,NULL);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingStateAttitudeChangedCallback (NULL,NULL);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingStateAltitudeChangedCallback (NULL,NULL);
 }
 
 void batteryStateChangedCallback (uint8_t percent, void *custom)
@@ -1392,7 +1398,28 @@ void flyingStateChangedCallback (eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATEC
         }
     }
 }
-
+void speedChangedCallback(float speedX,float speedY,float speedZ,void *custom){
+	BD_MANAGER_t *deviceManager = (BD_MANAGER_t*)custom;
+	if(deviceManager != NULL){
+		deviceManager->speedX = speedX;
+		deviceManager->speedY = speedY;
+		deviceManager->speedZ = speedZ;
+	}
+}
+void attitudeChangedCallback(float roll, float pitch, float yaw, void *custom){
+	BD_MANAGER_t *deviceManager = (BD_MANAGER_t*)custom;
+	if(deviceManager != NULL){
+		deviceManager->roll = roll;
+		deviceManager->pitch = pitch;
+		deviceManager->yaw = yaw;
+	}
+}
+void altitudeChangedCallback(double altitude, void *custom){
+	BD_MANAGER_t *deviceManager = (BD_MANAGER_t*)custom;
+	if(deviceManager != NULL){
+		deviceManager->altitude = altitude;
+	}
+}
 /************************** Decoding part **************************/
 int startDecoder(BD_MANAGER_t *deviceManager)
 {
@@ -1805,7 +1832,7 @@ int customPrintCallback (eARSAL_PRINT_LEVEL level, const char *tag, const char *
 }
 
 /************************** Image processing part **************************/
-void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascade,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
+void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	unsigned int height = 368;
 	unsigned int width = 640;
 	unsigned int yHeight = 368;
@@ -1817,8 +1844,8 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 	Mat uComp(height,width,CV_8UC1);
 	Mat vComp(height,width,CV_8UC1);
 	vector<Mat> splitYUV(3);
-	vector<Rect> faces;
-	stringstream ssRecSize;
+	vector<Rect> faces,ubodys,fbodys;
+	stringstream ssFaceRectSize,ssUbodyRectSize,ssFbodyRectSize,ssAltitude,ssSpeed,ssAttitude;
 
 	for(int i = 0;i < yHeight*yWidth; i++){
 
@@ -1829,24 +1856,60 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 		//vComp.data[index] = frame->componentArray[2].data[i/2];
 		index++;
 	}
+	ssAltitude << "altitude:" << deviceManager->altitude;
+	ssSpeed << "speedX:" << deviceManager->speedX << " speedY:" << deviceManager->speedY <<  "speedZ:" << deviceManager->speedZ;
+	ssAttitude << "yaw:" << deviceManager->yaw << " pitch:" << deviceManager->pitch << " roll:" << deviceManager->roll;
+	putText(yComp,ssAltitude.str(),Point(0,10),0,0.5,Scalar(255,255,255));
+	putText(yComp,ssSpeed.str(),Point(0,30),0,0.5,Scalar(255,255,255));
+	putText(yComp,ssAttitude.str(),Point(0,50),0,0.5,Scalar(255,255,255));
 
-	//cascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(60,60));
-	hog.detectMultiScale(yComp,faces,0,Size(),Size(),1.05,5,false);
+	deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
+	//deviceManager->upperbodyCascade.detectMultiScale(yComp,ubodys,1.1,2,0|CASCADE_SCALE_IMAGE,Size(80,80));
+	//hog.detectMultiScale(yComp,fbodys,0,Size(),Size(),1.05,5,false);
+
+	//検出された矩形データの表示*3
 	if(faces.size()){
-		ssRecSize << "X:" << faces[0].width << "Y:" << faces[0].height;
-		putText(yComp,ssRecSize.str(),Point((faces[0].x)-20,(faces[0].y)-20),0,0.5,Scalar(255,255,255));
+		ssFaceRectSize << "X:" << faces[0].width << "Y:" << faces[0].height;
+		putText(yComp,ssFaceRectSize.str(),Point((faces[0].x)-20,(faces[0].y)-20),0,0.5,Scalar(255,255,255));
+		for (int i = 0; i < faces.size(); i++) {
+			rectangle(yComp, Point(faces[i].x, faces[i].y),
+					Point(faces[i].x + faces[i].width,
+							faces[i].y + faces[i].height), 255, 5);
+			circle(yComp,
+					Point(faces[i].x + faces[i].width / 2,
+							faces[i].y + faces[i].height / 2), 3,
+					Scalar(255, 255, 255), -1);
+
+		}
 	}
 
-	for(int i = 0;i < faces.size();i++){
-		rectangle(yComp,Point(faces[i].x,faces[i].y),Point(faces[i].x + faces[i].width,faces[i].y + faces[i].height),255,5);
-		circle(yComp,
-				Point(
-						faces[i].x
-								+ faces[i].width / 2,
-						faces[i].y
-								+ faces[i].height / 2), 3,
-				Scalar(255, 255, 255), -1);
+	if(ubodys.size()){
+		ssUbodyRectSize << "X:" << ubodys[0].width << "Y:" << ubodys[0].height;
+		putText(yComp,ssUbodyRectSize.str(),Point((ubodys[0].x)-20,(ubodys[0].y)+ubodys[0].height+20),0,0.5,Scalar(255,255,255));
+		for (int i = 0; i < ubodys.size(); i++) {
+			rectangle(yComp, Point(ubodys[i].x, ubodys[i].y),
+					Point(ubodys[i].x + ubodys[i].width,
+							ubodys[i].y + ubodys[i].height), 255, 5);
+			circle(yComp,
+					Point(ubodys[i].x + ubodys[i].width / 2,
+							ubodys[i].y + ubodys[i].height / 2), 3,
+					Scalar(255, 255, 255), -1);
 
+		}
+	}
+	if(fbodys.size()){
+		ssFbodyRectSize << "X:" << fbodys[0].width << "Y:" << fbodys[0].height;
+		putText(yComp,ssFbodyRectSize.str(),Point((fbodys[0].x)-20,(fbodys[0].y)-20),0,0.5,Scalar(255,255,255));
+		for (int i = 0; i < fbodys.size(); i++) {
+			rectangle(yComp, Point(fbodys[i].x, fbodys[i].y),
+					Point(fbodys[i].x + fbodys[i].width,
+							fbodys[i].y + fbodys[i].height), 255, 5);
+			circle(yComp,
+					Point(fbodys[i].x + fbodys[i].width / 2,
+							fbodys[i].y + fbodys[i].height / 2), 3,
+					Scalar(255, 255, 255), -1);
+
+		}
 	}
 	//splitYUV[0] = yComp;
 	//splitYUV[1] = uComp;
@@ -1854,7 +1917,12 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascad
 
 	//merge(splitYUV,yuvImage);
 	//cvtColor(yuvImage,bgrImage,CV_YCrCb2BGR);
-	deviceManager->rectDetected = faces;	//検出された矩形情報をdeviceManagerに渡す
+	if(faces.size())
+		deviceManager->faceRectDetected = faces;	//検出された矩形情報をdeviceManagerに渡す
+	if(ubodys.size())
+		deviceManager->upperBodyRectDetected = ubodys;
+	if(fbodys.size())
+		deviceManager->fullBodyRectDetected =fbodys;
 	imshow("frame",yComp);
 	waitKey(1);
 	return;
@@ -1869,35 +1937,35 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	double diff;
 	int vel;
 	//ここまで
-	int rectSize = deviceManager->rectDetected.size();
+	int rectSize = deviceManager->fullBodyRectDetected.size();
 	if (rectSize != 0) {
-		coordDetected.resize(deviceManager->rectDetected.size());
-		for (int i = 0; i < deviceManager->rectDetected.size(); i++) {
-			coordDetected[i].x = deviceManager->rectDetected[i].x
-					+ deviceManager->rectDetected[i].width / 2;
-			coordDetected[i].y = deviceManager->rectDetected[i].y
-					+ deviceManager->rectDetected[i].height / 2;
+		coordDetected.resize(deviceManager->fullBodyRectDetected.size());
+		for (int i = 0; i < deviceManager->fullBodyRectDetected.size(); i++) {
+			coordDetected[i].x = deviceManager->fullBodyRectDetected[i].x
+					+ deviceManager->fullBodyRectDetected[i].width / 2;
+			coordDetected[i].y = deviceManager->fullBodyRectDetected[i].y
+					+ deviceManager->fullBodyRectDetected[i].height / 2;
 		}
 
 		/*
-		 coordDetectedSS << "x:" << deviceManager->rectDetected[0].x << " y:"
-				<< deviceManager->rectDetected[0].y;
+		 coordDetectedSS << "x:" << deviceManager->fullBodyRectDetected[0].x << " y:"
+				<< deviceManager->fullBodyRectDetected[0].y;
 		putText(infoWindow, coordDetectedSS.str(), Point(200, 100), FONT_ITALIC,
 				1.2, Scalar(255, 200, 100), 2, CV_AA);
 				*/
 		for (int i = 0; i < rectSize; i++) {
 			circle(infoWindow,
-					Point(deviceManager->rectDetected[i].x,
-							deviceManager->rectDetected[i].y), 3,
+					Point(deviceManager->fullBodyRectDetected[i].x,
+							deviceManager->fullBodyRectDetected[i].y), 3,
 					Scalar(255, 255, 255), -1);
 			circle(infoWindow, Point(coordDetected[i].x, coordDetected[i].y), 3,
 					Scalar(255, 255, 255), -1);
 			circle(infoWindow,
 					Point(
-							deviceManager->rectDetected[i].x
-									+ deviceManager->rectDetected[i].width,
-							deviceManager->rectDetected[i].y
-									+ deviceManager->rectDetected[i].height), 3,
+							deviceManager->fullBodyRectDetected[i].x
+									+ deviceManager->fullBodyRectDetected[i].width,
+							deviceManager->fullBodyRectDetected[i].y
+									+ deviceManager->fullBodyRectDetected[i].height), 3,
 					Scalar(255, 255, 255), -1);
 		}
 	//ここから
@@ -1906,11 +1974,11 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	//if(fabs(diff) < pixToDig(340)){
 	//	vel = 0;
 	//}
-	diff = (238.5 - (double)deviceManager->rectDetected[0].height)/28.5;
+	diff = (238.5 - (double)deviceManager->fullBodyRectDetected[0].height)/28.5;
 	if(fabs(diff) > 1.0) diff = diff/fabs(diff);
-	vel = 50.0 * diff;
+	if(fabs(238.5 - (double)deviceManager->fullBodyRectDetected[0].height) < 10.0) diff = 0.0;
+	vel = 10.0 * diff;
 	velSS << "velocity" <<vel;
-
 	putText(infoWindow,velSS.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 	//ここまで
 	}
@@ -2057,11 +2125,12 @@ void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 
 
 void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
-	//未完成　今はdirectionControlと同じ
 	double diff,vel;
-	diff = (238.5 - (double)deviceManager->rectDetected[0].height)/28.5;
+	diff = (238.5 - (double)deviceManager->fullBodyRectDetected[0].height)/28.5;
 	if(fabs(diff) > 1.0) diff = diff/fabs(diff);
-	vel = 50.0 * diff;
+	if(fabs(238.5 - (double)deviceManager->fullBodyRectDetected[0].height) < 10.0) diff = 0.0;
+	vel = 10.0 * diff;
+	deviceManager->dataPCMD.flag = 1;
 	deviceManager->dataPCMD.pitch = vel;
 }
 

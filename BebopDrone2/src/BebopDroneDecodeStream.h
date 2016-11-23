@@ -90,7 +90,9 @@ typedef struct
     int fifoWriteIdx;
 
     eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE flyingState;
-    vector<Rect> rectDetected;	//検出された矩形の座標
+    vector<Rect> faceRectDetected;	//検出された矩形の座標
+    vector<Rect> fullBodyRectDetected;	//検出された矩形の座標
+    vector<Rect> upperBodyRectDetected;	//検出された矩形の座標
     FILE *video_out;
 
     ARSAL_Mutex_t mutex;
@@ -100,6 +102,12 @@ typedef struct
     int run;
 
     IHM_t *ihm;
+    CascadeClassifier faceCascade;
+    CascadeClassifier fullbodyCascade;
+    CascadeClassifier upperbodyCascade;
+    bool imageFlag;	//画像処理実行フラグ
+    float speedX,speedY,speedZ,roll,pitch,yaw;
+    double altitude;
 } BD_MANAGER_t;
 
 struct READER_THREAD_DATA_t
@@ -150,13 +158,16 @@ void registerARCommandsCallbacks (BD_MANAGER_t *deviceManager);
 void unregisterARCommandsCallbacks(void);
 void batteryStateChangedCallback (uint8_t percent, void *custom);
 void flyingStateChangedCallback (eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE state, void *custom);
+void speedChangedCallback(float speedX,float speedY,float speedSZ,void *custom);
+void attitudeChangedCallback(float roll, float pitch, float yaw, void *custom);
+void altitudeChangedCallback(double altitude, void *custom);
 
 /** IHM callbacks **/
 void onInputEvent (eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat infoWindow);
 int customPrintCallback (eARSAL_PRINT_LEVEL level, const char *tag, const char *format, va_list va);
 
 /** Image processing part **/
-void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,CascadeClassifier cascade,HOGDescriptor hog,BD_MANAGER_t *deviceManager);
+void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager);
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat InfoWindow);
 void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
