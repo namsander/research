@@ -106,7 +106,8 @@ typedef struct
     CascadeClassifier fullbodyCascade;
     CascadeClassifier upperbodyCascade;
     bool imageFlag;	//画像処理実行フラグ
-    float speedX,speedY,speedZ,roll,pitch,yaw;
+    float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
+	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
     double altitude;
 } BD_MANAGER_t;
 
@@ -152,6 +153,9 @@ int sendTakeoff(BD_MANAGER_t *deviceManager);
 int sendLanding(BD_MANAGER_t *deviceManager);
 int sendEmergency(BD_MANAGER_t *deviceManager);
 int sendBeginStream(BD_MANAGER_t *deviceManager);
+int settingMaxTilt(BD_MANAGER_t *deviceManager);
+int settingMaxRotationSpeed(BD_MANAGER_t *deviceManager);
+int settingMaxVerticalSpeed(BD_MANAGER_t *deviceManager);
 
 /** Commands callback part **/
 void registerARCommandsCallbacks (BD_MANAGER_t *deviceManager);
@@ -161,7 +165,9 @@ void flyingStateChangedCallback (eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATEC
 void speedChangedCallback(float speedX,float speedY,float speedSZ,void *custom);
 void attitudeChangedCallback(float roll, float pitch, float yaw, void *custom);
 void altitudeChangedCallback(double altitude, void *custom);
-
+void MaxTiltChangedCallback_t (float current, float min, float max, void *custom);
+void maxRotationSpeedChangedCallback (float current, float min, float max, void *custom);
+void maxVerticalSpeedChangedCallback (float current, float min, float max, void *custom);
 /** IHM callbacks **/
 void onInputEvent (eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat infoWindow);
 int customPrintCallback (eARSAL_PRINT_LEVEL level, const char *tag, const char *format, va_list va);

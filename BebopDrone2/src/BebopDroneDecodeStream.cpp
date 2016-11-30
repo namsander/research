@@ -595,6 +595,7 @@ int main (int argc, char *argv[])
         failed = !cmdSend;
     }
 
+
     if (!failed)
     {
         int cmdSend = sendAllSettings(deviceManager);
@@ -1321,7 +1322,63 @@ int sendEmergency(BD_MANAGER_t *deviceManager)
 
     return sentStatus;
 }
+int settingMaxTilt(BD_MANAGER_t *deviceManager){
+	int sentStatus = 1;
+	u_int8_t cmdBuffer[128];
+	int32_t cmdSize = 0;
+	eARCOMMANDS_GENERATOR_ERROR cmdError;
+	eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+	ARSAL_PRINT(ARSAL_PRINT_INFO,TAG,"- set max tilt");
+	float maxTiltDeg = 35.0;
 
+	cmdError = ARCOMMANDS_Generator_GenerateARDrone3PilotingSettingsMaxTilt (cmdBuffer, sizeof(cmdBuffer), &cmdSize, maxTiltDeg);
+	if(cmdError == ARCOMMANDS_GENERATOR_OK){
+		netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback),1);
+	}
+	if((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK)){
+		ARSAL_PRINT(ARSAL_PRINT_WARNING,TAG, "Failed to send settingMaxTilt command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+		sentStatus = 0;
+	}
+	return sentStatus;
+}
+
+int settingMaxRotationSpeed(BD_MANAGER_t *deviceManager){
+	int sentStatus = 1;
+		u_int8_t cmdBuffer[128];
+		int32_t cmdSize = 0;
+		eARCOMMANDS_GENERATOR_ERROR cmdError;
+		eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+		ARSAL_PRINT(ARSAL_PRINT_INFO,TAG,"- set max rotation speed");
+		float maxRotationSpeed = 35.0;
+
+		cmdError = ARCOMMANDS_Generator_GenerateARDrone3SpeedSettingsMaxRotationSpeed (cmdBuffer, sizeof(cmdBuffer), &cmdSize, maxRotationSpeed);
+		if(cmdError == ARCOMMANDS_GENERATOR_OK){
+			netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback),1);
+		}
+		if((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK)){
+			ARSAL_PRINT(ARSAL_PRINT_WARNING,TAG, "Failed to send settingMaxRotationSpeed command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+			sentStatus = 0;
+		}
+		return sentStatus;
+}
+int settingMaxVerticalSpeed(BD_MANAGER_t *deviceManager){
+	int sentStatus = 1;
+		u_int8_t cmdBuffer[128];
+		int32_t cmdSize = 0;
+		eARCOMMANDS_GENERATOR_ERROR cmdError;
+		eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+		ARSAL_PRINT(ARSAL_PRINT_INFO,TAG,"- set max vertical speed");
+		float maxVerticalSpeed = 3.0;
+		ARCOMMANDS_Generator_GenerateARDrone3SpeedSettingsMaxVerticalSpeed (cmdBuffer , sizeof(cmdBuffer), &cmdSize, maxVerticalSpeed);
+		if(cmdError == ARCOMMANDS_GENERATOR_OK){
+			netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback),1);
+		}
+		if((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK)){
+			ARSAL_PRINT(ARSAL_PRINT_WARNING,TAG, "Failed to send settingMaxVerticalSpeed command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+			sentStatus = 0;
+		}
+		return sentStatus;
+}
 eARNETWORK_MANAGER_CALLBACK_RETURN arnetworkCmdCallback(int buffer_id, uint8_t *data, void *custom, eARNETWORK_MANAGER_CALLBACK_STATUS cause)
 {
     eARNETWORK_MANAGER_CALLBACK_RETURN retval = ARNETWORK_MANAGER_CALLBACK_RETURN_DEFAULT;
@@ -1345,8 +1402,10 @@ void registerARCommandsCallbacks (BD_MANAGER_t *deviceManager)
     ARCOMMANDS_Decoder_SetARDrone3PilotingStateSpeedChangedCallback(speedChangedCallback,deviceManager);
     ARCOMMANDS_Decoder_SetARDrone3PilotingStateAttitudeChangedCallback (attitudeChangedCallback,deviceManager);
     ARCOMMANDS_Decoder_SetARDrone3PilotingStateAltitudeChangedCallback (altitudeChangedCallback,deviceManager);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingSettingsStateMaxTiltChangedCallback (MaxTiltChangedCallback_t,deviceManager);
+    ARCOMMANDS_Decoder_SetARDrone3SpeedSettingsStateMaxRotationSpeedChangedCallback (maxRotationSpeedChangedCallback, deviceManager);
+    ARCOMMANDS_Decoder_SetARDrone3SpeedSettingsStateMaxVerticalSpeedChangedCallback (maxVerticalSpeedChangedCallback, deviceManager);
 }
-
 void unregisterARCommandsCallbacks (void)
 {
     ARCOMMANDS_Decoder_SetCommonCommonStateBatteryStateChangedCallback (NULL, NULL);
@@ -1354,6 +1413,8 @@ void unregisterARCommandsCallbacks (void)
     ARCOMMANDS_Decoder_SetARDrone3PilotingStateSpeedChangedCallback(NULL,NULL);
     ARCOMMANDS_Decoder_SetARDrone3PilotingStateAttitudeChangedCallback (NULL,NULL);
     ARCOMMANDS_Decoder_SetARDrone3PilotingStateAltitudeChangedCallback (NULL,NULL);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingSettingsStateMaxTiltChangedCallback (NULL,NULL);
+    ARCOMMANDS_Decoder_SetARDrone3SpeedSettingsStateMaxVerticalSpeedChangedCallback (NULL, NULL);
 }
 
 void batteryStateChangedCallback (uint8_t percent, void *custom)
@@ -1418,6 +1479,31 @@ void altitudeChangedCallback(double altitude, void *custom){
 	BD_MANAGER_t *deviceManager = (BD_MANAGER_t*)custom;
 	if(deviceManager != NULL){
 		deviceManager->altitude = altitude;
+	}
+}
+void MaxTiltChangedCallback_t (float current, float min, float max, void *custom){
+	BD_MANAGER_t *deviceManager = (BD_MANAGER_t*)custom;
+	if(deviceManager != NULL){
+		deviceManager->maxTilt = max;
+		deviceManager->minTilt = min;
+		deviceManager->currentTilt = current;
+	}
+}
+void maxRotationSpeedChangedCallback (float current, float min, float max, void *custom){
+	BD_MANAGER_t *deviceManager = (BD_MANAGER_t*)custom;
+	if(deviceManager != NULL){
+		deviceManager->maxRotationSpeed = max;
+		deviceManager->minRotationSpeed = min;
+		deviceManager->currentRotationSpeed = current;
+	}
+}
+void maxVerticalSpeedChangedCallback (float current, float min, float max, void *custom){
+
+	BD_MANAGER_t *deviceManager = (BD_MANAGER_t*)custom;
+	if(deviceManager != NULL){
+		deviceManager->maxVerticalSpeed = max;
+		deviceManager->minVerticalSpeed = min;
+		deviceManager->currentVerticalSpeed = current;
 	}
 }
 /************************** Decoding part **************************/
@@ -1845,7 +1931,7 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,HOGDescriptor hog,BD_MAN
 	Mat vComp(height,width,CV_8UC1);
 	vector<Mat> splitYUV(3);
 	vector<Rect> faces,ubodys,fbodys;
-	stringstream ssFaceRectSize,ssUbodyRectSize,ssFbodyRectSize,ssAltitude,ssSpeed,ssAttitude;
+	stringstream ssFaceRectSize,ssUbodyRectSize,ssFbodyRectSize,ssAltitude,ssSpeed,ssAttitude,ssMaxTilt,ssMaxRotationSpeed,ssMaxVerticalSpeed;
 
 	for(int i = 0;i < yHeight*yWidth; i++){
 
@@ -1859,10 +1945,15 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,HOGDescriptor hog,BD_MAN
 	ssAltitude << "altitude:" << deviceManager->altitude;
 	ssSpeed << "speedX:" << deviceManager->speedX << " speedY:" << deviceManager->speedY <<  "speedZ:" << deviceManager->speedZ;
 	ssAttitude << "yaw:" << deviceManager->yaw << " pitch:" << deviceManager->pitch << " roll:" << deviceManager->roll;
+	ssMaxTilt << "currentTilt:" << deviceManager->currentTilt << " maxTilt:" << deviceManager->maxTilt << " minTilt:" << deviceManager->minTilt;
+	ssMaxRotationSpeed << "currentRotationSpeed:" << deviceManager->currentRotationSpeed << " maxRotationSpeed:" << deviceManager->maxRotationSpeed << " minRotationSpeed:" << deviceManager->minRotationSpeed;
+	ssMaxVerticalSpeed << "currentVerticalSpeed:" << deviceManager->currentVerticalSpeed << " maxVerticalSpeed:" << deviceManager->maxVerticalSpeed << " minVerticalSpeed:" << deviceManager->minVerticalSpeed;
 	putText(yComp,ssAltitude.str(),Point(0,10),0,0.5,Scalar(255,255,255));
 	putText(yComp,ssSpeed.str(),Point(0,30),0,0.5,Scalar(255,255,255));
 	putText(yComp,ssAttitude.str(),Point(0,50),0,0.5,Scalar(255,255,255));
-
+	putText(yComp,ssMaxTilt.str(),Point(0,70),0,0.5,Scalar(255,255,255));
+	putText(yComp,ssMaxRotationSpeed.str(),Point(0,90),0,0.5,Scalar(255,255,255));
+	putText(yComp,ssMaxVerticalSpeed.str(),Point(0,110),0,0.5,Scalar(255,255,255));
 	deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
 	//deviceManager->upperbodyCascade.detectMultiScale(yComp,ubodys,1.1,2,0|CASCADE_SCALE_IMAGE,Size(80,80));
 	//hog.detectMultiScale(yComp,fbodys,0,Size(),Size(),1.05,5,false);
