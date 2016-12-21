@@ -173,7 +173,8 @@ void onInputEvent (eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat in
 int customPrintCallback (eARSAL_PRINT_LEVEL level, const char *tag, const char *format, va_list va);
 
 /** Image processing part **/
-void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager);
+void imageProc(ARCODECS_Manager_Frame_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager);
+void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager);
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat InfoWindow);
 void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);

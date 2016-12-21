@@ -341,12 +341,12 @@ void* Decode_RunDataThread(void *customData)
                 */
 
                 //2フレームに一度処理を行う
-                if(!deviceManager->imageFlag){
+                /*if(!deviceManager->imageFlag){
                 	deviceManager->imageFlag = 1;
                 	imageProc(decodedFrame,hog,deviceManager);	//YuvからBGRに変換したMat作成
                 }else{
                 	deviceManager->imageFlag = 0;
-                }
+                }*/
 
             }
 
@@ -398,6 +398,12 @@ void* Decode_RunDataThread(void *customData)
 
                 if (decodedOut != NULL)
                 {
+                if(!deviceManager->imageFlag){
+                	deviceManager->imageFlag = 1;
+                    imageProc2(decodedOut,hog,deviceManager);
+                }else{
+                	deviceManager->imageFlag = 0;
+                }
                     fwrite(decodedOut, pic_size, 1, deviceManager->video_out);
                 }
 
@@ -2015,6 +2021,64 @@ void imageProc(struct _ARCODECS_Manager_Frame_t_* frame,HOGDescriptor hog,BD_MAN
 	if(fbodys.size())
 		deviceManager->fullBodyRectDetected =fbodys;
 	imshow("frame",yComp);
+	waitKey(1);
+	return;
+}
+void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
+
+	unsigned int height = 368;
+	unsigned int width = 640;
+	unsigned int yHeight = 368;
+	unsigned int yWidth = 672;
+	unsigned int index = 0;
+	Mat bgrImage(height,width,CV_8UC3);	//mat初期化
+	Mat yComp(height,width,CV_8UC1);
+	Mat uComp(height,width,CV_8UC1);
+	Mat vComp(height,width,CV_8UC1);
+	Mat print = Mat::zeros(Size(300,300),CV_8UC1);
+	Mat yuvImage(height+height/2,width,CV_8UC1,frame); //Mat yuvImageをframeで初期化
+	Mat hsvImage(height,width,CV_8UC3);
+	Mat rImage(height,width,CV_8UC3);
+	Mat channels[3];
+	vector<Mat> splitYUV(3);
+	stringstream ssPrint;
+	int count = 0;
+	while(*frame != NULL){
+		frame++;
+		count++;
+	}
+	ssPrint << "frameSize:" << count << endl;
+	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB);
+	cvtColor(bgrImage,hsvImage,CV_BGR2HSV);
+	split(hsvImage,channels);
+	//赤以外弾ｊく
+	rImage = bgrImage.clone();
+	for(int i = 0;i < height * width;i++){
+		if(hsvImage.data[i*3] >= 3 && hsvImage.data[i*3+1] <= 150){
+		rImage.data[i*3] = 0;
+		rImage.data[i*3+1] = 0;
+		rImage.data[i*3+2] = 0;
+		}
+	}
+	/*for(int i = 0;i < yHeight*yWidth; i++){
+
+		if((i%yWidth)+1 > width) continue;
+
+		yComp.data[index] = frame->componentArray[0].data[i];
+		//uComp.data[index] = frame->componentArray[1].data[i/2];
+		//vComp.data[index] = frame->componentArray[2].data[i/2];
+		index++;
+	}*/
+	putText(print,ssPrint.str(),Point(0,110),0,0.5,Scalar(255,255,255));
+	//deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
+	imshow("frame",print);
+	imshow("bgrImage",bgrImage);
+	imshow("rImage",rImage);
+	imshow("hsvImage",hsvImage);
+	imshow("h",channels[0]);
+	//imshow("s",channels[1]);
+	//imshow("v",channels[2]);
+
 	waitKey(1);
 	return;
 }
