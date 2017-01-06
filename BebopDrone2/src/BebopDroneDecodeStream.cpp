@@ -2039,27 +2039,80 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	Mat yuvImage(height+height/2,width,CV_8UC1,frame); //Mat yuvImageをframeで初期化
 	Mat hsvImage(height,width,CV_8UC3);
 	Mat rImage(height,width,CV_8UC3);
+	Mat binary(height,width,CV_8UC1,Scalar(255));
 	Mat channels[3];
+	Mat labelImg;
+	Mat stats;
+	Mat centroids;
 	vector<Mat> splitYUV(3);
+	vector<Vec3b> colors;
 	stringstream ssPrint;
+	int nLab;
 	int count = 0;
 	while(*frame != NULL){
 		frame++;
 		count++;
 	}
 	ssPrint << "frameSize:" << count << endl;
-	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB);
-	cvtColor(bgrImage,hsvImage,CV_BGR2HSV);
+	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB); //yuvをbgrに変換
+	cvtColor(bgrImage,hsvImage,CV_BGR2HSV); //bgrをhsvに変換
 	split(hsvImage,channels);
-	//赤以外弾ｊく
+	//赤以外はじく
 	rImage = bgrImage.clone();
 	for(int i = 0;i < height * width;i++){
-		if(hsvImage.data[i*3] >= 3 && hsvImage.data[i*3+1] <= 150){
+		if(hsvImage.data[i*3] >= 20 || hsvImage.data[i*3+1] <= 150){
+		binary.data[i] = 0;
 		rImage.data[i*3] = 0;
 		rImage.data[i*3+1] = 0;
 		rImage.data[i*3+2] = 0;
 		}
 	}
+	morphologyEx(binary,binary,MORPH_OPEN,Mat(),Point(-1,-1),1);
+	morphologyEx(binary,binary,MORPH_CLOSE,Mat(),Point(-1,-1),1);
+	nLab = connectedComponentsWithStats(binary,labelImg,stats,centroids); //ラベリング実行
+	colors.resize(nLab);
+	colors[0] =Vec3b(0,0,0);
+	//ラベル色設定
+	for(int i = 1;i < nLab;i++){
+		colors[i] = Vec3b(rand() & 255,rand() & 255,rand() & 255);
+	}
+	//ラベリング結果描画
+	Mat dst(binary.size(),CV_8UC3);
+	for(int i = 0;i < binary.rows;i++){
+		int *lb = labelImg.ptr<int>(i);
+		Vec3b *pix = dst.ptr<Vec3b>(i);
+		for(int j = 0;j < dst.cols;j++){
+			pix[j] = colors[lb[j]];
+		}
+	}
+	//ROIの設定
+	for(int i = 1; i < nLab; i++){
+		int *param = stats.ptr<int>(i);
+		int x = param[CC_STAT_LEFT];
+		int y = param[CC_STAT_TOP];
+		int height = param[CC_STAT_HEIGHT];
+		int width = param[CC_STAT_WIDTH];
+
+		rectangle(dst,Rect(x,y,width,height),Scalar(0,255,0),2);
+	}
+	//重心の出力
+	for(int i = 1;i < nLab; i++){
+		double *param = centroids.ptr<double>(i);
+		int x = static_cast<int>(param[0]);
+		int y = static_cast<int>(param[1]);
+		circle(dst,Point(x,y),3,Scalar(0,0,255),-1);
+	}
+	//面積地の出力
+	for(int i = 1;i < nLab; i++){
+		int *param = stats.ptr<int>(i);
+		int x = param[CC_STAT_LEFT];
+		int y = param[CC_STAT_TOP];
+		stringstream num;
+		num << "number:" << i << " area:" << param[CC_STAT_AREA];
+		putText(dst,num.str(),Point(x+5,y+20),FONT_HERSHEY_COMPLEX,0.7,Scalar(0,255,255),2);
+
+	}
+
 	/*for(int i = 0;i < yHeight*yWidth; i++){
 
 		if((i%yWidth)+1 > width) continue;
@@ -2071,11 +2124,13 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	}*/
 	putText(print,ssPrint.str(),Point(0,110),0,0.5,Scalar(255,255,255));
 	//deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
+	imshow("binary",binary);
 	imshow("frame",print);
 	imshow("bgrImage",bgrImage);
-	imshow("rImage",rImage);
-	imshow("hsvImage",hsvImage);
-	imshow("h",channels[0]);
+	imshow("label",dst);
+	//imshow("rImage",rImage);
+	//imshow("hsvImage",hsvImage);
+	//imshow("h",channels[0]);
 	//imshow("s",channels[1]);
 	//imshow("v",channels[2]);
 
