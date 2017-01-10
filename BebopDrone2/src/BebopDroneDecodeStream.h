@@ -180,4 +180,5 @@ void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 double pixToDig(const int pix);
+void labeling(const Mat input,Mat &output,Mat &dst,vector<vector<int> > &stats,vector<vector<double> > &centorius,const int maxLabelNum);
 #endif /* _SDK_EXAMPLE_BD_H_ */

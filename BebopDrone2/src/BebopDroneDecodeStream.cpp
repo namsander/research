@@ -2038,15 +2038,15 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	Mat print = Mat::zeros(Size(300,300),CV_8UC1);
 	Mat yuvImage(height+height/2,width,CV_8UC1,frame); //Mat yuvImageをframeで初期化
 	Mat hsvImage(height,width,CV_8UC3);
-	Mat rImage(height,width,CV_8UC3);
 	Mat binary(height,width,CV_8UC1,Scalar(255));
 	Mat channels[3];
 	Mat labelImg;
-	Mat stats;
-	Mat centroids;
+	Mat dst(height,width,CV_8UC3);
+	Mat output(height,width,CV_16UC1);
 	vector<Mat> splitYUV(3);
-	vector<Vec3b> colors;
 	stringstream ssPrint;
+	vector<vector<int> > stats;
+	vector<vector<double> > centroids;
 	int nLab;
 	int count = 0;
 	while(*frame != NULL){
@@ -2057,62 +2057,13 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB); //yuvをbgrに変換
 	cvtColor(bgrImage,hsvImage,CV_BGR2HSV); //bgrをhsvに変換
 	split(hsvImage,channels);
-	//赤以外はじく
-	rImage = bgrImage.clone();
+	//hsvで二値化
 	for(int i = 0;i < height * width;i++){
-		if(hsvImage.data[i*3] >= 20 || hsvImage.data[i*3+1] <= 150){
+		if(hsvImage.data[i*3] >= 20 || hsvImage.data[i*3+1] <= 180){
 		binary.data[i] = 0;
-		rImage.data[i*3] = 0;
-		rImage.data[i*3+1] = 0;
-		rImage.data[i*3+2] = 0;
 		}
 	}
-	morphologyEx(binary,binary,MORPH_OPEN,Mat(),Point(-1,-1),1);
-	morphologyEx(binary,binary,MORPH_CLOSE,Mat(),Point(-1,-1),1);
-	nLab = connectedComponentsWithStats(binary,labelImg,stats,centroids); //ラベリング実行
-	colors.resize(nLab);
-	colors[0] =Vec3b(0,0,0);
-	//ラベル色設定
-	for(int i = 1;i < nLab;i++){
-		colors[i] = Vec3b(rand() & 255,rand() & 255,rand() & 255);
-	}
-	//ラベリング結果描画
-	Mat dst(binary.size(),CV_8UC3);
-	for(int i = 0;i < binary.rows;i++){
-		int *lb = labelImg.ptr<int>(i);
-		Vec3b *pix = dst.ptr<Vec3b>(i);
-		for(int j = 0;j < dst.cols;j++){
-			pix[j] = colors[lb[j]];
-		}
-	}
-	//ROIの設定
-	for(int i = 1; i < nLab; i++){
-		int *param = stats.ptr<int>(i);
-		int x = param[CC_STAT_LEFT];
-		int y = param[CC_STAT_TOP];
-		int height = param[CC_STAT_HEIGHT];
-		int width = param[CC_STAT_WIDTH];
-
-		rectangle(dst,Rect(x,y,width,height),Scalar(0,255,0),2);
-	}
-	//重心の出力
-	for(int i = 1;i < nLab; i++){
-		double *param = centroids.ptr<double>(i);
-		int x = static_cast<int>(param[0]);
-		int y = static_cast<int>(param[1]);
-		circle(dst,Point(x,y),3,Scalar(0,0,255),-1);
-	}
-	//面積地の出力
-	for(int i = 1;i < nLab; i++){
-		int *param = stats.ptr<int>(i);
-		int x = param[CC_STAT_LEFT];
-		int y = param[CC_STAT_TOP];
-		stringstream num;
-		num << "number:" << i << " area:" << param[CC_STAT_AREA];
-		putText(dst,num.str(),Point(x+5,y+20),FONT_HERSHEY_COMPLEX,0.7,Scalar(0,255,255),2);
-
-	}
-
+    labeling(binary,output,dst,stats,centroids,300);
 	/*for(int i = 0;i < yHeight*yWidth; i++){
 
 		if((i%yWidth)+1 > width) continue;
@@ -2128,7 +2079,6 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	imshow("frame",print);
 	imshow("bgrImage",bgrImage);
 	imshow("label",dst);
-	//imshow("rImage",rImage);
 	//imshow("hsvImage",hsvImage);
 	//imshow("h",channels[0]);
 	//imshow("s",channels[1]);
@@ -2346,4 +2296,78 @@ void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 
 double pixToDig(const int pix){
 	return (double)(pix-320)/(640.0/80.9946);
+}
+
+void labeling(const Mat input,Mat &output,Mat &dst,vector<vector<int> > &stats,vector<vector<double> > &centroids,const int minLabelSize){
+	int nLab;
+	vector<Vec3b> colors;
+	Mat s,c;
+	vector<int> itmp;
+	vector<double> dtmp;
+	//openingして領域つなげてclosingでノイズ除去
+	morphologyEx(input,input,MORPH_OPEN,Mat(),Point(-1,-1),1);
+	morphologyEx(input,input,MORPH_CLOSE,Mat(),Point(-1,-1),1);
+	nLab = connectedComponentsWithStats(input,output,s,c); //ラベリング実行
+	//regionの大きさ順にソート
+	//regionの大きさが規定値以上なら追加
+	for(int i = 0;i < nLab;i++){
+		int *param1 = s.ptr<int>(i);
+		double *param2 = c.ptr<double>(i);
+		if(param1[CC_STAT_AREA] >= minLabelSize){
+			//statsにpushするためのitmp作成
+			for(int j = 0;j < 6;j++){
+				itmp.push_back(param1[j]);
+			}
+			//statsにitmpをpush
+			stats.push_back(itmp);
+			itmp.clear();	//重要　これがないとitmpの要素数がstatsの要素数を超える
+			//centroidsにpushするためのdtmp作成
+			dtmp.push_back(param2[0]);
+			dtmp.push_back(param2[1]);
+			//centroidsにdtmpをpush
+			centroids.push_back(dtmp);	//重要　これがないとdtmpの要素数がcentroidsの要素数を超える
+			dtmp.clear();
+		}
+
+	}
+	nLab = stats.size();	//新しいlabel数
+	colors.resize(nLab);
+	colors[0] =Vec3b(0,0,0);
+	//ラベル色設定
+	for(int i = 1;i < nLab;i++){
+		colors[i] = Vec3b(rand() & 255,rand() & 255,rand() & 255);
+	}
+	//ラベリング結果描画
+	for(int i = 0;i < input.rows;i++){
+		int *lb = output.ptr<int>(i);
+		Vec3b *pix = dst.ptr<Vec3b>(i);
+		for(int j = 0;j < dst.cols;j++){
+			pix[j] = colors[lb[j]];
+		}
+	}
+	//ROIの設定
+	for(int i = 1; i < nLab; i++){
+		int x = stats[i][CC_STAT_LEFT];
+		int y = stats[i][CC_STAT_TOP];
+		int height = stats[i][CC_STAT_HEIGHT];
+		int width = stats[i][CC_STAT_WIDTH];
+		rectangle(dst,Rect(x,y,width,height),Scalar(0,255,0),2);
+	}
+	//重心の出力
+	for(int i = 1;i < nLab; i++){
+		int x = static_cast<int>(centroids[i][0]);
+		int y = static_cast<int>(centroids[i][1]);
+		circle(dst,Point(x,y),3,Scalar(0,0,255),-1);
+	}
+	//面積値の出力
+	for(int i = 1;i < nLab; i++){
+		int x = stats[i][CC_STAT_LEFT];
+		int y = stats[i][CC_STAT_TOP];
+		stringstream num;
+		num << "number:" << i << " area:" << stats[i][CC_STAT_AREA];
+		putText(dst,num.str(),Point(x+5,y+20),FONT_HERSHEY_COMPLEX,0.7,Scalar(0,255,255),2);
+
+	}
+
+
 }
