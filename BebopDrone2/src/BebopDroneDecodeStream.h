@@ -56,6 +56,10 @@ typedef struct _ARDrone3CameraData_t_
 typedef struct READER_THREAD_DATA_t READER_THREAD_DATA_t;
 
 typedef struct RawFrame_t RawFrame_t;
+typedef struct PastYaw_t{
+	double yawSpeed;
+	int pixPerHeight;
+}PastYaw_t;
 typedef struct
 {
     ARNETWORKAL_Manager_t *alManager;
@@ -93,6 +97,8 @@ typedef struct
     vector<Rect> faceRectDetected;	//検出された矩形の座標
     vector<Rect> fullBodyRectDetected;	//検出された矩形の座標
     vector<Rect> upperBodyRectDetected;	//検出された矩形の座標
+    vector<vector<int> > stats;
+    vector<PastYaw_t> pastYaw[3];
     FILE *video_out;
 
     ARSAL_Mutex_t mutex;
@@ -100,15 +106,18 @@ typedef struct
     ARSAL_Thread_t *readerThreads;
     READER_THREAD_DATA_t *readerThreadsData;
     int run;
-
+    int pastYawCount = 0;
     IHM_t *ihm;
     CascadeClassifier faceCascade;
     CascadeClassifier fullbodyCascade;
     CascadeClassifier upperbodyCascade;
     bool imageFlag;	//画像処理実行フラグ
+    bool findFace;	//顔発見フラグ
+    bool downPPH;	//ピクセル/高さ　が下がったか
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
     double altitude;
+
 } BD_MANAGER_t;
 
 struct READER_THREAD_DATA_t
@@ -116,7 +125,11 @@ struct READER_THREAD_DATA_t
     BD_MANAGER_t *deviceManager;
     int readerBufferId;
 };
-
+//statsの7番目と8番目にcentroids格納
+enum CentroidTypes{
+	CENTER_X = 6,
+	CENTER_Y = 7
+};
 /** Connection part **/
 int ardiscoveryConnect (BD_MANAGER_t *deviceManager);
 eARDISCOVERY_ERROR ARDISCOVERY_Connection_SendJsonCallback (uint8_t *dataTx, uint32_t *dataTxSize, void *customData);
@@ -177,8 +190,11 @@ void imageProc(ARCODECS_Manager_Frame_t* frame,HOGDescriptor hog,BD_MANAGER_t *d
 void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager);
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat InfoWindow);
 void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
-void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
-void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
+void directionControl(BD_MANAGER_t *deviceManager);
+void distanceControl(BD_MANAGER_t *deviceManager);
+void yawControl(BD_MANAGER_t *deviceManager);
 double pixToDig(const int pix);
-void labeling(const Mat input,Mat &output,Mat &dst,vector<vector<int> > &stats,vector<vector<double> > &centorius,const int maxLabelNum);
+void labeling(const Mat input,Mat &output,Mat &dst,BD_MANAGER_t *deviceManager,const int maxLabelNum);
+template<class T>
+bool areaComparator(const vector<T>& a,const vector<T>& b);
 #endif /* _SDK_EXAMPLE_BD_H_ */

@@ -2063,7 +2063,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		binary.data[i] = 0;
 		}
 	}
-    labeling(binary,output,dst,stats,centroids,300);
+    labeling(binary,output,dst,deviceManager,300);
 	/*for(int i = 0;i < yHeight*yWidth; i++){
 
 		if((i%yWidth)+1 > width) continue;
@@ -2221,8 +2221,9 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 
 			if (rectSize != 0) {
 				//cameraControl(deviceManager,coordDetected);
-				directionControl(deviceManager,coordDetected);
-				distanceControl(deviceManager,coordDetected);
+				directionControl(deviceManager);
+				distanceControl(deviceManager);
+				yawControl(deviceManager);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
@@ -2271,12 +2272,13 @@ void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 						deviceManager->dataCam.pan = -80;
 					}
 }
-void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
+void directionControl(BD_MANAGER_t *deviceManager){
 	double diff;
 	int vel;
-	diff = pixToDig(coordDetected[0].x);
-	vel = 100.0 * (diff / pixToDig(640));
-	if(fabs(diff) < pixToDig(340)){
+	deviceManager->stats[1][CENTER_X];
+	diff = pixToDig(deviceManager->stats[1][CENTER_X]);
+	vel = 100.0 * (diff / pixToDig(640)); //100はやり過ぎ？ 最大が1になるようにpixToDig(640)で割っている
+	if(fabs(diff) < pixToDig(340)){	//中心からのピクセル距離が20以下なら速度を0に
 		vel = 0;
 	}
 	deviceManager->dataPCMD.yaw = vel;
@@ -2284,31 +2286,46 @@ void directionControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 }
 
 
-void distanceControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
+void distanceControl(BD_MANAGER_t *deviceManager){
+	//この関数の各数値は計測し直す必要がある
 	double diff,vel;
-	diff = (238.5 - (double)deviceManager->fullBodyRectDetected[0].height)/28.5;
+	diff = (238.5 - (double)deviceManager->stats[1][CC_STAT_HEIGHT])/28.5; //最も離れた時のピクセルの差が28.5pixなのでその数字で割っている
 	if(fabs(diff) > 1.0) diff = diff/fabs(diff);
-	if(fabs(238.5 - (double)deviceManager->fullBodyRectDetected[0].height) < 10.0) diff = 0.0;
+	if(fabs(238.5 - (double)deviceManager->stats[1][CC_STAT_HEIGHT]) < 10.0) diff = 0.0;
 	vel = 10.0 * diff;
 	deviceManager->dataPCMD.flag = 1;
 	deviceManager->dataPCMD.pitch = vel;
 }
 
+void yawControl(BD_MANAGER_t *deviceManager){
+	//この関数はpixelサイズが一定以上の時呼ばれる
+	//まず顔が検出できているかできていないかを判断する
+	if(deviceManager->faceRectDetected.size() != 0){
+		deviceManager->findFace = 1;
+	}else{
+		deviceManager->findFace = 0;
+	}
+	//できていなければ、PPHが一定以上か以下かを判断する
+	//一定以下なら、目標値に近づくようにyawを右方向に傾ける
+	//一定以上なら、カウントを始める
+	//基本的に前のフレームのPPHとyaw移動方向を考慮してyawを調節する
+
+}
 double pixToDig(const int pix){
 	return (double)(pix-320)/(640.0/80.9946);
 }
 
-void labeling(const Mat input,Mat &output,Mat &dst,vector<vector<int> > &stats,vector<vector<double> > &centroids,const int minLabelSize){
+void labeling(const Mat input,Mat &output,Mat &dst,BD_MANAGER_t *deviceManager,const int minLabelSize){
 	int nLab;
 	vector<Vec3b> colors;
 	Mat s,c;
 	vector<int> itmp;
 	vector<double> dtmp;
+	int sCount = 0;
 	//openingして領域つなげてclosingでノイズ除去
 	morphologyEx(input,input,MORPH_OPEN,Mat(),Point(-1,-1),1);
 	morphologyEx(input,input,MORPH_CLOSE,Mat(),Point(-1,-1),1);
 	nLab = connectedComponentsWithStats(input,output,s,c); //ラベリング実行
-	//regionの大きさ順にソート
 	//regionの大きさが規定値以上なら追加
 	for(int i = 0;i < nLab;i++){
 		int *param1 = s.ptr<int>(i);
@@ -2319,18 +2336,23 @@ void labeling(const Mat input,Mat &output,Mat &dst,vector<vector<int> > &stats,v
 				itmp.push_back(param1[j]);
 			}
 			//statsにitmpをpush
-			stats.push_back(itmp);
+			deviceManager->stats.push_back(itmp);
 			itmp.clear();	//重要　これがないとitmpの要素数がstatsの要素数を超える
 			//centroidsにpushするためのdtmp作成
-			dtmp.push_back(param2[0]);
-			dtmp.push_back(param2[1]);
+			//dtmp.push_back(param2[0]);
+			//dtmp.push_back(param2[1]);
 			//centroidsにdtmpをpush
-			centroids.push_back(dtmp);	//重要　これがないとdtmpの要素数がcentroidsの要素数を超える
-			dtmp.clear();
+			deviceManager->stats[sCount].push_back(static_cast<int>(param2[0]));
+			deviceManager->stats[sCount].push_back(static_cast<int>(param2[1]));
+
+			//dtmp.clear();  //重要　これがないとdtmpの要素数がcentroidsの要素数を超える
+			sCount++;
 		}
 
 	}
-	nLab = stats.size();	//新しいlabel数
+	nLab = deviceManager->stats.size();	//新しいlabel数
+	//regionの大きさ順にソート
+	sort(deviceManager->stats.begin()+1,deviceManager->stats.end(),areaComparator<int>);
 	colors.resize(nLab);
 	colors[0] =Vec3b(0,0,0);
 	//ラベル色設定
@@ -2347,27 +2369,31 @@ void labeling(const Mat input,Mat &output,Mat &dst,vector<vector<int> > &stats,v
 	}
 	//ROIの設定
 	for(int i = 1; i < nLab; i++){
-		int x = stats[i][CC_STAT_LEFT];
-		int y = stats[i][CC_STAT_TOP];
-		int height = stats[i][CC_STAT_HEIGHT];
-		int width = stats[i][CC_STAT_WIDTH];
+		int x = deviceManager->stats[i][CC_STAT_LEFT];
+		int y = deviceManager->stats[i][CC_STAT_TOP];
+		int height = deviceManager->stats[i][CC_STAT_HEIGHT];
+		int width = deviceManager->stats[i][CC_STAT_WIDTH];
 		rectangle(dst,Rect(x,y,width,height),Scalar(0,255,0),2);
 	}
 	//重心の出力
 	for(int i = 1;i < nLab; i++){
-		int x = static_cast<int>(centroids[i][0]);
-		int y = static_cast<int>(centroids[i][1]);
+		int x = static_cast<int>(deviceManager->stats[i][CENTER_X]);
+		int y = static_cast<int>(deviceManager->stats[i][CENTER_Y]);
 		circle(dst,Point(x,y),3,Scalar(0,0,255),-1);
 	}
 	//面積値の出力
 	for(int i = 1;i < nLab; i++){
-		int x = stats[i][CC_STAT_LEFT];
-		int y = stats[i][CC_STAT_TOP];
+		int x = deviceManager->stats[i][CC_STAT_LEFT];
+		int y = deviceManager->stats[i][CC_STAT_TOP];
 		stringstream num;
-		num << "number:" << i << " area:" << stats[i][CC_STAT_AREA];
+		num << "number:" << i << " area:" << deviceManager->stats[i][CC_STAT_AREA];
 		putText(dst,num.str(),Point(x+5,y+20),FONT_HERSHEY_COMPLEX,0.7,Scalar(0,255,255),2);
 
 	}
 
 
+}
+template<class T>
+bool areaComparator(const vector<T>& a,const vector<T>& b){
+	return a[CC_STAT_AREA] > b[CC_STAT_AREA];
 }
