@@ -56,10 +56,36 @@ typedef struct _ARDrone3CameraData_t_
 typedef struct READER_THREAD_DATA_t READER_THREAD_DATA_t;
 
 typedef struct RawFrame_t RawFrame_t;
-typedef struct PastYaw_t{
-	double yawSpeed;
-	int pixPerHeight;
-}PastYaw_t;
+
+class RollAndPPH {
+private:
+	float rollAngle; //ラジアン
+	float pixPerHeight; //pixNum/pixHeight
+public:
+	//pixPerHeightの値が0.0のときそのインデックスにはまだ値が入っていないということになる
+	RollAndPPH(){
+		rollAngle = 200.0;
+		pixPerHeight = 0.0;
+	}
+	//リングバッファに値を追加していく
+	void setAngleAndPix(float angle,float pix){
+		rollAngle = angle;
+		pixPerHeight = pix;
+	}
+	//人とdroneの距離が範囲を超えた場合に値をリセットする
+	void reset() {
+		rollAngle = 200.0;
+		pixPerHeight = 0.0;
+	}
+	float getCurrentSpeed(){
+		return rollAngle;
+	}
+	float getCurrentPixPerHeight(){
+		return pixPerHeight;
+	}
+
+};
+
 typedef struct
 {
     ARNETWORKAL_Manager_t *alManager;
@@ -92,13 +118,13 @@ typedef struct
     RawFrame_t **rawFrameFifo;
     int fifoReadIdx;
     int fifoWriteIdx;
-
     eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE flyingState;
     vector<Rect> faceRectDetected;	//検出された矩形の座標
     vector<Rect> fullBodyRectDetected;	//検出された矩形の座標
     vector<Rect> upperBodyRectDetected;	//検出された矩形の座標
+    //vector<double> ROC;
     vector<vector<int> > stats;
-    vector<PastYaw_t> pastYaw[3];
+    vector<vector<int> >eigenvectors;
     FILE *video_out;
 
     ARSAL_Mutex_t mutex;
@@ -106,7 +132,6 @@ typedef struct
     ARSAL_Thread_t *readerThreads;
     READER_THREAD_DATA_t *readerThreadsData;
     int run;
-    int pastYawCount = 0;
     IHM_t *ihm;
     CascadeClassifier faceCascade;
     CascadeClassifier fullbodyCascade;
@@ -114,9 +139,15 @@ typedef struct
     bool imageFlag;	//画像処理実行フラグ
     bool findFace;	//顔発見フラグ
     bool downPPH;	//ピクセル/高さ　が下がったか
+    bool ROCFlag;	//過去にROCを求めているか
+    bool rollFlag;	//過去のroll値を保持しているか
+    int coordinatenum;
+    //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
     double altitude;
+    float pastRoll,pastPixPerHeight,currentRoll,currentPixPerHeight,maxTargetPPH,minTargetPPH;	//pastRollはdegree
+    double pastROC,currentROC,differenceROC,firstEV,secondEV;
 
 } BD_MANAGER_t;
 
@@ -128,7 +159,8 @@ struct READER_THREAD_DATA_t
 //statsの7番目と8番目にcentroids格納
 enum CentroidTypes{
 	CENTER_X = 6,
-	CENTER_Y = 7
+	CENTER_Y = 7,
+	LABEL = 8
 };
 /** Connection part **/
 int ardiscoveryConnect (BD_MANAGER_t *deviceManager);
@@ -175,7 +207,7 @@ void registerARCommandsCallbacks (BD_MANAGER_t *deviceManager);
 void unregisterARCommandsCallbacks(void);
 void batteryStateChangedCallback (uint8_t percent, void *custom);
 void flyingStateChangedCallback (eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE state, void *custom);
-void speedChangedCallback(float speedX,float speedY,float speedSZ,void *custom);
+void speedChangedCallback(float speedX,float speedY,float speedZ,void *custom);
 void attitudeChangedCallback(float roll, float pitch, float yaw, void *custom);
 void altitudeChangedCallback(double altitude, void *custom);
 void MaxTiltChangedCallback_t (float current, float min, float max, void *custom);
@@ -192,9 +224,10 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat In
 void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 void directionControl(BD_MANAGER_t *deviceManager);
 void distanceControl(BD_MANAGER_t *deviceManager);
-void yawControl(BD_MANAGER_t *deviceManager);
+void rollControl(BD_MANAGER_t *deviceManager);
 double pixToDig(const int pix);
 void labeling(const Mat input,Mat &output,Mat &dst,BD_MANAGER_t *deviceManager,const int maxLabelNum);
+void exePca(const Mat input,BD_MANAGER_t *deviceManager);
 template<class T>
 bool areaComparator(const vector<T>& a,const vector<T>& b);
 #endif /* _SDK_EXAMPLE_BD_H_ */

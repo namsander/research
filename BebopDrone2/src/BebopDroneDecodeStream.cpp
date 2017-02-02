@@ -46,7 +46,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
-
+#include <math.h>
 #ifdef __cplusplus
 extern "C"{
 #endif
@@ -93,6 +93,10 @@ extern "C"{
 #define BD_RAW_FRAME_POOL_SIZE 50
 
 #define ERROR_STR_LENGTH 2048
+
+
+#define FRONT_ROC 0.695 //正面向いてる時のROC
+#define SIDE_ROC 0.135 //側面ROC
 
 #define FIFO_DIR_PATTERN "/tmp/arsdk_XXXXXX"
 #define FIFO_NAME "arsdk_fifo"
@@ -565,6 +569,19 @@ int main (int argc, char *argv[])
 
 		deviceManager->imageFlag = 0;	//画像処理実行フラグ
 
+		deviceManager->pastRoll = 0;
+		deviceManager->rollFlag = 0;
+		deviceManager->pastPixPerHeight = 0;	//0は未入力という意味
+		deviceManager->pastROC = 0.0;
+		deviceManager->currentROC = 0.0;
+		deviceManager->eigenvectors = vector<vector<int> >(2,vector<int>(2,0));
+		deviceManager->ROCFlag = false;
+		deviceManager->differenceROC = 0.0;
+		deviceManager->firstEV = 0.0;
+		deviceManager->secondEV = 0.0;
+
+		//deviceManager->ROC = vector<double>(0.0,0.0);
+		//deviceManager->rocCount = -1;
 		deviceManager->flyingState =
 				ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_MAX;
     }
@@ -2035,28 +2052,34 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	Mat yComp(height,width,CV_8UC1);
 	Mat uComp(height,width,CV_8UC1);
 	Mat vComp(height,width,CV_8UC1);
-	Mat print = Mat::zeros(Size(300,300),CV_8UC1);
+	Mat print = Mat::zeros(Size(500,300),CV_8UC1);
 	Mat yuvImage(height+height/2,width,CV_8UC1,frame); //Mat yuvImageをframeで初期化
 	Mat hsvImage(height,width,CV_8UC3);
 	Mat binary(height,width,CV_8UC1,Scalar(255));
 	Mat channels[3];
 	Mat labelImg;
-	Mat dst(height,width,CV_8UC3);
-	Mat output(height,width,CV_16UC1);
+	Mat blur;
+	Mat cutImage;
+	Mat coordinate;
+	Mat dst(height,width,CV_8UC3,Scalar(0));
+	Mat output(height,width,CV_16UC1,Scalar(0));
 	vector<Mat> splitYUV(3);
-	stringstream ssPrint;
+	stringstream ssPrint[6];
 	vector<vector<int> > stats;
 	vector<vector<double> > centroids;
+	PCA pca;
 	int nLab;
 	int count = 0;
+	int coordinateNum = 0;
 	while(*frame != NULL){
 		frame++;
 		count++;
 	}
-	ssPrint << "frameSize:" << count << endl;
 	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB); //yuvをbgrに変換
-	cvtColor(bgrImage,hsvImage,CV_BGR2HSV); //bgrをhsvに変換
-	split(hsvImage,channels);
+	bilateralFilter(bgrImage,blur,-1,50,2);	//2が正常に作動するギリギリ
+	//medianBlur(bgrImage,blur,3);
+	cvtColor(blur,hsvImage,CV_BGR2HSV); //bgrをhsvに変換
+	//split(hsvImage,channels);
 	//hsvで二値化
 	for(int i = 0;i < height * width;i++){
 		if(hsvImage.data[i*3] >= 20 || hsvImage.data[i*3+1] <= 180){
@@ -2064,6 +2087,79 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		}
 	}
     labeling(binary,output,dst,deviceManager,300);
+    //binary画像のregion部分切り出し
+	if (deviceManager->stats.size() > 1) {
+		//regionのピクセル数分coordinate確保
+		coordinate = Mat(deviceManager->stats[1][CC_STAT_AREA],2,CV_64F);
+		cutImage = Mat(output,
+				Rect(deviceManager->stats[1][CC_STAT_LEFT],
+						deviceManager->stats[1][CC_STAT_TOP],
+						deviceManager->stats[1][CC_STAT_WIDTH],
+						deviceManager->stats[1][CC_STAT_HEIGHT])).clone();
+		for (int i = 0; i < deviceManager->stats[1][CC_STAT_HEIGHT]; i++) {
+			int *cutImageP = cutImage.ptr<int>(i);
+			for (int j = 0; j < deviceManager->stats[1][CC_STAT_WIDTH]; j++) {
+				if (cutImageP[j] == 1) {
+
+					coordinate.at<double>(coordinateNum, 0) = i;
+					coordinate.at<double>(coordinateNum, 1) = j;
+
+					coordinateNum++;
+
+				}
+			}
+		}
+		deviceManager->coordinatenum = coordinateNum;
+		ssPrint[0] << "Area - coordNum:" << deviceManager->stats[1][CC_STAT_AREA] - deviceManager->coordinatenum;
+
+		//主成分分析実行
+		pca(coordinate,Mat(),CV_PCA_DATA_AS_ROW,2);
+		deviceManager->firstEV = pca.eigenvalues.at<double>(0);
+		deviceManager->secondEV = pca.eigenvalues.at<double>(1);
+		//過去にrocとったなら
+		if(deviceManager->ROCFlag){
+
+			deviceManager->pastROC = deviceManager->currentROC;
+			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
+			//ROCの変化量を計算して代入
+			deviceManager->differenceROC = deviceManager->currentROC - deviceManager->pastROC;
+			//differenceROCの絶対値が0.1以下->誤差の範疇で人は動いていない
+			if(fabs(deviceManager->differenceROC) <= 0.01){
+				//差はないことにする
+				deviceManager->differenceROC = 0.0;
+				//差が正(ROC増加)
+			}else if(deviceManager->differenceROC > 0){
+				deviceManager->differenceROC = 1.0;
+				//差が負(ROC減少)
+			}else{
+				deviceManager->differenceROC = -1.0;
+			}
+			//とっていないなら
+		}else{
+			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
+			deviceManager->ROCFlag = true;
+		}
+
+		ssPrint[1] << "ROC:" << deviceManager->currentROC;
+		ssPrint[2] << "eigenVecX:" << pca.eigenvectors.at<double>(0,1) << " eigenVecY:" << pca.eigenvectors.at<double>(0,0);
+		ssPrint[3] << "eigenValue1:" << pca.eigenvalues.at<double>(0) << " eigenValue2:" << pca.eigenvalues.at<double>(1);
+		ssPrint[4] << "differenceOfROC:" << deviceManager->differenceROC;
+		ssPrint[5] << "height:" << deviceManager->stats[1][CC_STAT_HEIGHT] << "width:" << deviceManager->stats[1][CC_STAT_WIDTH];
+		//imshow("cutImage",cutImage);
+	}else{
+		//ROCFlagはドローンと人の距離が離れた場合にも呼ぶ必要がある
+		deviceManager->ROCFlag = false;
+		deviceManager->firstEV = 0.0;
+		deviceManager->secondEV = 0.0;
+		ssPrint[0] << "Area - coordNum:" << 0;
+		ssPrint[1] << "ROC:" << 0;
+		ssPrint[2] << "eigenVecX:" << 0 << " eigenVecY:" << 0;
+		ssPrint[3] << "eigenValue1:" << 0 << " eigenValue2:" << 0;
+		ssPrint[4] << "differenceOfROC:" << 0;
+		ssPrint[5] << "height:" << 0 << "width:" << 0;
+
+	}
+
 	/*for(int i = 0;i < yHeight*yWidth; i++){
 
 		if((i%yWidth)+1 > width) continue;
@@ -2073,11 +2169,17 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		//vComp.data[index] = frame->componentArray[2].data[i/2];
 		index++;
 	}*/
-	putText(print,ssPrint.str(),Point(0,110),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[0].str(),Point(0,40),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[1].str(),Point(0,80),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[2].str(),Point(0,120),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[3].str(),Point(0,160),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[4].str(),Point(0,200),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[5].str(),Point(0,240),0,0.5,Scalar(255,255,255));
 	//deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
 	imshow("binary",binary);
 	imshow("frame",print);
-	imshow("bgrImage",bgrImage);
+	//imshow("bgrImage",bgrImage);
+	//imshow("blur",blur);
 	imshow("label",dst);
 	//imshow("hsvImage",hsvImage);
 	//imshow("h",channels[0]);
@@ -2219,11 +2321,11 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	    case IHM_INPUT_EVENT_NONE:
 		if (deviceManager != NULL) {
 
-			if (rectSize != 0) {
+			if (deviceManager->stats.size() > 1) {
 				//cameraControl(deviceManager,coordDetected);
 				directionControl(deviceManager);
 				distanceControl(deviceManager);
-				yawControl(deviceManager);
+				rollControl(deviceManager);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
@@ -2297,22 +2399,64 @@ void distanceControl(BD_MANAGER_t *deviceManager){
 	deviceManager->dataPCMD.pitch = vel;
 }
 
-void yawControl(BD_MANAGER_t *deviceManager){
+void rollControl(BD_MANAGER_t *deviceManager){
 	//この関数はpixelサイズが一定以上の時呼ばれる
+	//第一主成分が一定以上の時
 	//まず顔が検出できているかできていないかを判断する
-	if(deviceManager->faceRectDetected.size() != 0){
-		deviceManager->findFace = 1;
+	//ここのroll値はすべて最大角の割合
+	//800は仮　十分に近づいているか？
+	if (deviceManager->firstEV > 800.0) {
+		if (deviceManager->faceRectDetected.size() != 0) {
+			deviceManager->findFace = 1;
+		} else {
+			deviceManager->findFace = 0;
+		}
+
+		//直前フレームの角度やピクセル情報を保持しているかチェック　していなければ代入
+		if (deviceManager->rollFlag == 0) {
+			//deviceManager->rollには何が入っているのか？ おそらく現在のroll角度(割合か角度か調べる必要がある)
+			deviceManager->pastRoll = deviceManager->roll;
+			deviceManager->dataPCMD.flag = 1;
+			deviceManager->dataPCMD.roll = 50;	//とりあえず右に35*0.5度傾ける
+			deviceManager->rollFlag = 1;
+			return;
+		} else {	//直前の情報を保持していたら
+			deviceManager->dataPCMD.flag = 1;
+			//rocが減少していればdifferenceROCは-1なので-pastRoll(反転)増加していれば向き変わらず,変化なければdifferenceROC=0なのでroll=0;
+			//一度0になると永遠に0のまま
+			//doubleからfloatにしてるのが怖い
+			//とりあえずROC-なら逆に、それ以外なら直前のroll角度と同じ方向に傾けることにする
+			if(deviceManager->differenceROC < 0.0){
+				deviceManager->dataPCMD.roll = deviceManager->pastRoll * (float)deviceManager->differenceROC;
+			}else{
+
+				deviceManager->dataPCMD.roll = deviceManager->pastRoll;
+			}
+			//currentRollはもう使っていないから別のものをpastRollに入れなければならない
+			deviceManager->pastRoll = deviceManager->currentRoll;
+		}
 	}else{
-		deviceManager->findFace = 0;
+		//rollをリセットするかしないか
+		//rollFlagをリセットするかしないか
 	}
+
+	//to do
+	//rollの角度をPPHの目標値との差に比例させる
+	//PPHの目標値とある程度近くなったら顔検出カウントを開始する
+	//顔検出カウントが0になったら反対側に回りこむ(回り込みフェーズフラグを作成する必要あり)
+	//回り込む場合は一度PPHをさげて(側面PPH要測定)からまた目標値まで上げる必要がある
+	//上がりきったら回りこみフェーズフラグをオフにする
+	//符号だけ直前PPHとの差で判定して、数値は目標PPHとの誤差と、最大速度で決める
+	//二値化する前に画像をぼやかす
+	//
+	//rollの更新量はpixPerHeightの目標値との差（要計測）に比例させる必要がある
 	//できていなければ、PPHが一定以上か以下かを判断する
 	//一定以下なら、目標値に近づくようにyawを右方向に傾ける
 	//一定以上なら、カウントを始める
-	//基本的に前のフレームのPPHとyaw移動方向を考慮してyawを調節する
-
 }
+//中心から何度ずれているのか求める
 double pixToDig(const int pix){
-	return (double)(pix-320)/(640.0/80.9946);
+	return ((double)pix-320.0)/(640.0/80.9946);
 }
 
 void labeling(const Mat input,Mat &output,Mat &dst,BD_MANAGER_t *deviceManager,const int minLabelSize){
@@ -2325,73 +2469,119 @@ void labeling(const Mat input,Mat &output,Mat &dst,BD_MANAGER_t *deviceManager,c
 	//openingして領域つなげてclosingでノイズ除去
 	morphologyEx(input,input,MORPH_OPEN,Mat(),Point(-1,-1),1);
 	morphologyEx(input,input,MORPH_CLOSE,Mat(),Point(-1,-1),1);
-	nLab = connectedComponentsWithStats(input,output,s,c); //ラベリング実行
-	//regionの大きさが規定値以上なら追加
-	for(int i = 0;i < nLab;i++){
-		int *param1 = s.ptr<int>(i);
-		double *param2 = c.ptr<double>(i);
-		if(param1[CC_STAT_AREA] >= minLabelSize){
-			//statsにpushするためのitmp作成
-			for(int j = 0;j < 6;j++){
-				itmp.push_back(param1[j]);
+	nLab = connectedComponentsWithStats(input,output,s,c,8,CV_32S); //ラベリング実行
+	deviceManager->stats.clear();
+	if (nLab > 1) {
+		//regionの大きさが規定値以上なら追加
+		for (int i = 0; i < nLab; i++) {
+			int *param1 = s.ptr<int>(i);
+			double *param2 = c.ptr<double>(i);
+			if (param1[CC_STAT_AREA] >= minLabelSize) {
+				//statsにpushするためのitmp作成
+				for (int j = 0; j < 6; j++) {
+					itmp.push_back(param1[j]);
+				}
+				//statsにitmpをpush
+				deviceManager->stats.push_back(itmp);
+				itmp.clear();	//重要　これがないとitmpの要素数がstatsの要素数を超える
+				//centroidsにpushするためのdtmp作成
+				//dtmp.push_back(param2[0]);
+				//dtmp.push_back(param2[1]);
+				//centroidsにdtmpをpush
+				deviceManager->stats[sCount].push_back(
+						static_cast<int>(param2[0]));
+				deviceManager->stats[sCount].push_back(
+						static_cast<int>(param2[1]));
+				//古いラベルを代入
+				deviceManager->stats[sCount].push_back(i);
+				//dtmp.clear();  //重要　これがないとdtmpの要素数がcentroidsの要素数を超える
+				sCount++;
 			}
-			//statsにitmpをpush
-			deviceManager->stats.push_back(itmp);
-			itmp.clear();	//重要　これがないとitmpの要素数がstatsの要素数を超える
-			//centroidsにpushするためのdtmp作成
-			//dtmp.push_back(param2[0]);
-			//dtmp.push_back(param2[1]);
-			//centroidsにdtmpをpush
-			deviceManager->stats[sCount].push_back(static_cast<int>(param2[0]));
-			deviceManager->stats[sCount].push_back(static_cast<int>(param2[1]));
 
-			//dtmp.clear();  //重要　これがないとdtmpの要素数がcentroidsの要素数を超える
-			sCount++;
+		}
+		nLab = deviceManager->stats.size();	//新しいlabel数
+		//regionの大きさ順にソート
+		sort(deviceManager->stats.begin() + 1, deviceManager->stats.end(),
+				areaComparator<int>);
+		//ラベル画像をソート結果によって書き直し　AREA一定以下のlabelは塗りつぶされ、label0(背景)の大きさが増える
+		for (int i = 0; i < output.rows; i++) {
+			int *outputP = output.ptr<int>(i);
+			for (int j = 0; j < output.cols; j++) {
+				for (int k = 0; k < nLab + 1; k++) {
+					if (k >= nLab) {
+						outputP[j] = 0;
+					} else if (outputP[j]
+							== (int) deviceManager->stats[k][LABEL]) {
+						outputP[j] = k;
+						break;
+					}
+				}
+			}
 		}
 
-	}
-	nLab = deviceManager->stats.size();	//新しいlabel数
-	//regionの大きさ順にソート
-	sort(deviceManager->stats.begin()+1,deviceManager->stats.end(),areaComparator<int>);
-	colors.resize(nLab);
-	colors[0] =Vec3b(0,0,0);
-	//ラベル色設定
-	for(int i = 1;i < nLab;i++){
-		colors[i] = Vec3b(rand() & 255,rand() & 255,rand() & 255);
-	}
-	//ラベリング結果描画
-	for(int i = 0;i < input.rows;i++){
-		int *lb = output.ptr<int>(i);
-		Vec3b *pix = dst.ptr<Vec3b>(i);
-		for(int j = 0;j < dst.cols;j++){
-			pix[j] = colors[lb[j]];
+		colors.resize(nLab);
+		colors[0] = Vec3b(0, 0, 0);
+		//ラベル色設定
+		for (int i = 1; i < nLab; i++) {
+			colors[i] = Vec3b(rand() & 255, rand() & 255, rand() & 255);
+		}
+		//ラベリング結果描画
+		for (int i = 0; i < input.rows; i++) {
+			int *lb = output.ptr<int>(i);
+			Vec3b *pix = dst.ptr<Vec3b>(i);
+			for (int j = 0; j < dst.cols; j++) {
+				/*
+				 if(lb[j] == 1){
+				 pix[j] = Vec3b(255,0,0);
+				 }else{
+				 pix[j] = Vec3b(0,0,0);
+				 }
+				 */
+
+				pix[j] = colors[lb[j]];
+			}
+		}
+		//ROIの設定
+		for (int i = 1; i < nLab; i++) {
+			int x = deviceManager->stats[i][CC_STAT_LEFT];
+			int y = deviceManager->stats[i][CC_STAT_TOP];
+			int height = deviceManager->stats[i][CC_STAT_HEIGHT];
+			int width = deviceManager->stats[i][CC_STAT_WIDTH];
+			rectangle(dst, Rect(x, y, width, height), Scalar(0, 255, 0), 2);
+		}
+		//重心の出力
+		for (int i = 1; i < nLab; i++) {
+			int x = static_cast<int>(deviceManager->stats[i][CENTER_X]);
+			int y = static_cast<int>(deviceManager->stats[i][CENTER_Y]);
+			circle(dst, Point(x, y), 3, Scalar(0, 0, 255), -1);
+		}
+		//面積値の出力
+		for (int i = 1; i < nLab; i++) {
+			int x = deviceManager->stats[i][CC_STAT_LEFT];
+			int y = deviceManager->stats[i][CC_STAT_TOP];
+			stringstream num;
+			num << "number:" << i << " area:"
+					<< deviceManager->stats[i][CC_STAT_AREA];
+			putText(dst, num.str(), Point(x + 5, y + 20), FONT_HERSHEY_COMPLEX,
+					0.7, Scalar(0, 255, 255), 2);
+
 		}
 	}
-	//ROIの設定
-	for(int i = 1; i < nLab; i++){
-		int x = deviceManager->stats[i][CC_STAT_LEFT];
-		int y = deviceManager->stats[i][CC_STAT_TOP];
-		int height = deviceManager->stats[i][CC_STAT_HEIGHT];
-		int width = deviceManager->stats[i][CC_STAT_WIDTH];
-		rectangle(dst,Rect(x,y,width,height),Scalar(0,255,0),2);
-	}
-	//重心の出力
-	for(int i = 1;i < nLab; i++){
-		int x = static_cast<int>(deviceManager->stats[i][CENTER_X]);
-		int y = static_cast<int>(deviceManager->stats[i][CENTER_Y]);
-		circle(dst,Point(x,y),3,Scalar(0,0,255),-1);
-	}
-	//面積値の出力
-	for(int i = 1;i < nLab; i++){
-		int x = deviceManager->stats[i][CC_STAT_LEFT];
-		int y = deviceManager->stats[i][CC_STAT_TOP];
-		stringstream num;
-		num << "number:" << i << " area:" << deviceManager->stats[i][CC_STAT_AREA];
-		putText(dst,num.str(),Point(x+5,y+20),FONT_HERSHEY_COMPLEX,0.7,Scalar(0,255,255),2);
-
-	}
 
 
+
+}
+void exePca(const Mat input,BD_MANAGER_t *deviceManager){
+	const int dimension = 2;
+	const int datanum = input.rows;
+	PCA pca;
+	pca(input,noArray(),0,2);
+	deviceManager->currentROC = (float)pca.eigenvalues.at<double>(1) / (float)pca.eigenvalues.at<double>(0);
+	for(int i = 0;i < 2;i++){
+		for(int j = 0;j < 2;j++){
+			deviceManager->eigenvectors[i][j] = pca.eigenvectors.at<double>(i,j);
+		}
+	}
 }
 template<class T>
 bool areaComparator(const vector<T>& a,const vector<T>& b){

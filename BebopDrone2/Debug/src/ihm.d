@@ -8,7 +8,7 @@ src/ihm.o: ../src/ihm.cpp \
  /home/takuya/arsdk3/out/arsdk-native/staging/usr/include/libARSAL/ARSAL_Sem.h \
  /home/takuya/arsdk3/out/arsdk-native/staging/usr/include/libARSAL/ARSAL_Socket.h \
  /home/takuya/arsdk3/out/arsdk-native/staging/usr/include/libARSAL/ARSAL_Thread.h \
- ../src/ihm.h
+ ../src/ihm.h /usr/local/include/opencv2/opencv.hpp
 
 /home/takuya/arsdk3/out/arsdk-native/staging/usr/include/libARSAL/ARSAL.h:
 
@@ -29,3 +29,5 @@ src/ihm.o: ../src/ihm.cpp \
 /home/takuya/arsdk3/out/arsdk-native/staging/usr/include/libARSAL/ARSAL_Thread.h:
 
 ../src/ihm.h:
+
+/usr/local/include/opencv2/opencv.hpp:
