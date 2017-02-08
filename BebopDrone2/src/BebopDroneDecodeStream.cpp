@@ -2192,7 +2192,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 /************************** Autonomous flying part **************************/
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat infoWindow){
 	 // Manage IHM input events
-	stringstream velSS,coordDetectedSS,eventSS;
+	stringstream velSS,coordDetectedSS,eventSS,print[1];
 	eventSS << "event:" << event;
 	vector<Point> coordDetected;
 	//ここから
@@ -2252,102 +2252,88 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	line(infoWindow,Point(330,0),Point(330,368),Scalar(255,255,255),2);
 	rectangle(infoWindow,Point(310,174),Point(330,194),255,5);
 
-	    switch (event)
-	    {
-	    case IHM_INPUT_EVENT_EXIT:
-	        gIHMRun = 0;
-	        break;
-	    case IHM_INPUT_EVENT_EMERGENCY:
-	        if(deviceManager != NULL)
-	        {
-	            sendEmergency(deviceManager);
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_TAKEOFF_LANDING:
-	        if(deviceManager != NULL)
-	        {
-	            if (deviceManager->flyingState == ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_LANDED)
-	            {
-	                sendTakeoff(deviceManager);
-	            }
-	            else if ((deviceManager->flyingState == ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_HOVERING) ||
-	                     (deviceManager->flyingState == ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_FLYING))
-	            {
-	                sendLanding(deviceManager);
-	            }
-
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_CAM_UP:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataCam.tilt += 2;
-	            if (deviceManager->dataCam.tilt > 80)
-	            {
-	                deviceManager->dataCam.tilt = 80;
-	            }
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_CAM_DOWN:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataCam.tilt -= 2;
-	            if (deviceManager->dataCam.tilt < -80)
-	            {
-	                deviceManager->dataCam.tilt = -80;
-	            }
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_CAM_RIGHT:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataCam.pan += 2;
-	            if (deviceManager->dataCam.pan > 80)
-	            {
-	                deviceManager->dataCam.pan = 80;
-	            }
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_CAM_LEFT:
-	        if(deviceManager != NULL)
-	        {
-	            deviceManager->dataCam.pan -= 2;
-	            if (deviceManager->dataCam.pan < -80)
-	            {
-	                deviceManager->dataCam.pan = -80;
-	            }
-	        }
-	        break;
-	    case IHM_INPUT_EVENT_NONE:
+	switch (event) {
+	case IHM_INPUT_EVENT_EXIT:
+		gIHMRun = 0;
+		break;
+	case IHM_INPUT_EVENT_EMERGENCY:
 		if (deviceManager != NULL) {
+			sendEmergency(deviceManager);
+		}
+		break;
+	case IHM_INPUT_EVENT_TAKEOFF_LANDING:
+		if (deviceManager != NULL) {
+			if (deviceManager->flyingState
+					== ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_LANDED) {
+				sendTakeoff(deviceManager);
+			} else if ((deviceManager->flyingState
+					== ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_HOVERING)
+					|| (deviceManager->flyingState
+							== ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_FLYING)) {
+				sendLanding(deviceManager);
+			}
 
-			if (deviceManager->stats.size() > 1) {
-				//cameraControl(deviceManager,coordDetected);
-				directionControl(deviceManager);
-				distanceControl(deviceManager);
-				rollControl(deviceManager);
+		}
+		break;
+	case IHM_INPUT_EVENT_RIGHT:
+		if (deviceManager != NULL) {
+			deviceManager->dataPCMD.flag = 1;
+			deviceManager->dataPCMD.roll = 50;
+		}
+		break;
+	case IHM_INPUT_EVENT_LEFT:
+		if (deviceManager != NULL) {
+			deviceManager->dataPCMD.flag = 1;
+			deviceManager->dataPCMD.roll = -50;
+		}
+		break;
+
+	case IHM_INPUT_EVENT_NONE:
+		deviceManager->dataPCMD.flag = 0;
+		deviceManager->dataPCMD.roll = 0;
+		break;
+	default:
+		break;
+	}
+	if (deviceManager != NULL) {
+
+		if (deviceManager->stats.size() > 1) {
+			//cameraControl(deviceManager,coordDetected);
+			//directionControl(deviceManager);
+			distanceControl(deviceManager);
+			//rollControl(deviceManager);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
 //					putText(infoWindow,"-30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else{
 //					putText(infoWindow,"0",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
-//				}
-			}else{
-				deviceManager->dataPCMD.flag = 0;
-				deviceManager->dataPCMD.roll = 0;
-				deviceManager->dataPCMD.pitch = 0;
-				deviceManager->dataPCMD.yaw = 0;
-				deviceManager->dataPCMD.gaz = 0;
-				deviceManager->dataCam.pan = 0;
-				deviceManager->dataCam.tilt = 0;
-			}
+//				}ssPrint[6] < "pitch:" << deviceManager->dataPCMD.pitch << " yaw:" << deviceManager->dataPCMD.yaw;
+      		print[0] << "pitch:" << deviceManager->dataPCMD.pitch << "yaw:" << deviceManager->dataPCMD.yaw;
 
+		} else {
+			deviceManager->dataPCMD.flag = 0;
+			deviceManager->dataPCMD.roll = 0;
+			deviceManager->dataPCMD.pitch = 0;
+			deviceManager->dataPCMD.yaw = 0;
+			deviceManager->dataPCMD.gaz = 0;
+			deviceManager->dataCam.pan = 0;
+			deviceManager->dataCam.tilt = 0;
+		    print[0] << "pitch:" << deviceManager->dataPCMD.pitch << "yaw:" << deviceManager->dataPCMD.yaw;
 		}
-	        break;
-	    default:
-	        break;
-	    }
+	    putText(infoWindow,print[0].str(),Point(0,100),0,0.5,Scalar(255,255,255));
+
+	}
+	//保険のために動かないようにする　動かすときは消す
+	/*
+	deviceManager->dataPCMD.flag = 0;
+	deviceManager->dataPCMD.roll = 0;
+	deviceManager->dataPCMD.pitch = 0;
+	deviceManager->dataPCMD.yaw = 0;
+	deviceManager->dataPCMD.gaz = 0;
+	deviceManager->dataCam.pan = 0;
+	deviceManager->dataCam.tilt = 0;
+*/
 }
 
 void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
@@ -2377,9 +2363,10 @@ void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected){
 void directionControl(BD_MANAGER_t *deviceManager){
 	double diff;
 	int vel;
+
 	deviceManager->stats[1][CENTER_X];
 	diff = pixToDig(deviceManager->stats[1][CENTER_X]);
-	vel = 100.0 * (diff / pixToDig(640)); //100はやり過ぎ？ 最大が1になるようにpixToDig(640)で割っている
+	vel = 50.0 * (diff / pixToDig(640)); //100はやり過ぎ？ 最大が1になるようにpixToDig(640)で割っている
 	if(fabs(diff) < pixToDig(340)){	//中心からのピクセル距離が20以下なら速度を0に
 		vel = 0;
 	}
@@ -2390,13 +2377,22 @@ void directionControl(BD_MANAGER_t *deviceManager){
 
 void distanceControl(BD_MANAGER_t *deviceManager){
 	//この関数の各数値は計測し直す必要がある
-	double diff,vel;
-	diff = (238.5 - (double)deviceManager->stats[1][CC_STAT_HEIGHT])/28.5; //最も離れた時のピクセルの差が28.5pixなのでその数字で割っている
-	if(fabs(diff) > 1.0) diff = diff/fabs(diff);
-	if(fabs(238.5 - (double)deviceManager->stats[1][CC_STAT_HEIGHT]) < 10.0) diff = 0.0;
-	vel = 10.0 * diff;
-	deviceManager->dataPCMD.flag = 1;
-	deviceManager->dataPCMD.pitch = vel;
+	//deviceManager->stats[1][CC_STAT_HEIGHT]となっているところを第一主成分にする
+	//人とドローンの距離が2mの時の人の第一主成分を計測し、238.5と置き換える
+	//1.5mと2.5mの時の第一主成分も計測し、2mの時の第一主成分との差をとって28.5と置き換える
+	//2mより近づくと反対に制御入る　2m手前にはtilt角0区間がある
+	double diff, vel;
+	if ((1000.0 - (double) deviceManager->firstEV) < 100.0 && (1000.0 - (float) deviceManager->firstEV) >= 0.0) {
+		deviceManager->dataPCMD.flag = 0; //このままにするとyawかpitch満たした時に動かなくなるので、↑でいいようなら消す
+		diff = 0.0;
+	} else {
+		diff = (1000.0 - (double) deviceManager->firstEV) / 380.0; //最も離れた時のピクセルの差が28.5pixなのでその数字で割っている
+		if (fabs(diff) > 1.0)
+			diff = diff / fabs(diff);
+		vel = 10.0 * diff;
+		deviceManager->dataPCMD.flag = 1;
+		deviceManager->dataPCMD.pitch = vel;
+	}
 }
 
 void rollControl(BD_MANAGER_t *deviceManager){
@@ -2415,22 +2411,24 @@ void rollControl(BD_MANAGER_t *deviceManager){
 		//直前フレームの角度やピクセル情報を保持しているかチェック　していなければ代入
 		if (deviceManager->rollFlag == 0) {
 			//deviceManager->rollには何が入っているのか？ おそらく現在のroll角度(割合か角度か調べる必要がある)
-			deviceManager->pastRoll = deviceManager->roll;
+			deviceManager->currentRoll = 50;
 			deviceManager->dataPCMD.flag = 1;
-			deviceManager->dataPCMD.roll = 50;	//とりあえず右に35*0.5度傾ける
+			deviceManager->dataPCMD.roll = deviceManager->currentRoll;	//とりあえず右に35*0.5度傾ける
 			deviceManager->rollFlag = 1;
 			return;
 		} else {	//直前の情報を保持していたら
+			deviceManager->pastRoll = deviceManager->currentRoll;
 			deviceManager->dataPCMD.flag = 1;
 			//rocが減少していればdifferenceROCは-1なので-pastRoll(反転)増加していれば向き変わらず,変化なければdifferenceROC=0なのでroll=0;
 			//一度0になると永遠に0のまま
 			//doubleからfloatにしてるのが怖い
 			//とりあえずROC-なら逆に、それ以外なら直前のroll角度と同じ方向に傾けることにする
 			if(deviceManager->differenceROC < 0.0){
-				deviceManager->dataPCMD.roll = deviceManager->pastRoll * (float)deviceManager->differenceROC;
+				deviceManager->currentRoll = deviceManager->pastRoll * (float)deviceManager->differenceROC;
+				deviceManager->dataPCMD.roll = deviceManager->currentRoll;;
 			}else{
-
-				deviceManager->dataPCMD.roll = deviceManager->pastRoll;
+				deviceManager->currentRoll = deviceManager->pastRoll;
+				deviceManager->dataPCMD.roll = deviceManager->currentRoll;
 			}
 			//currentRollはもう使っていないから別のものをpastRollに入れなければならない
 			deviceManager->pastRoll = deviceManager->currentRoll;
