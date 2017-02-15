@@ -136,7 +136,7 @@ typedef struct
     CascadeClassifier faceCascade;
     CascadeClassifier fullbodyCascade;
     CascadeClassifier upperbodyCascade;
-    bool imageFlag;	//画像処理実行フラグ
+    int imageFlag;	//画像処理実行フラグ
     bool findFace;	//顔発見フラグ
     bool downPPH;	//ピクセル/高さ　が下がったか
     bool ROCFlag;	//過去にROCを求めているか

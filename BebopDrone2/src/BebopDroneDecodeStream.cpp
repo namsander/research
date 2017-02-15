@@ -400,16 +400,15 @@ void* Decode_RunDataThread(void *customData)
                     av_frame_free(&avFrame);
                 }
 
-                if (decodedOut != NULL)
-                {
-                if(!deviceManager->imageFlag){
-                	deviceManager->imageFlag = 1;
-                    imageProc2(decodedOut,hog,deviceManager);
-                }else{
-                	deviceManager->imageFlag = 0;
-                }
-                    fwrite(decodedOut, pic_size, 1, deviceManager->video_out);
-                }
+				if (decodedOut != NULL) {
+					if (deviceManager->imageFlag == 2) {
+						deviceManager->imageFlag = deviceManager->imageFlag % 2;
+						imageProc2(decodedOut, hog, deviceManager);
+					} else {
+						deviceManager->imageFlag++;
+					}
+					fwrite(decodedOut, pic_size, 1, deviceManager->video_out);
+				}
 
                 free (decodedOut);
                 decodedOut = NULL;
@@ -2071,10 +2070,6 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	int nLab;
 	int count = 0;
 	int coordinateNum = 0;
-	while(*frame != NULL){
-		frame++;
-		count++;
-	}
 	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB); //yuvをbgrに変換
 	bilateralFilter(bgrImage,blur,-1,50,2);	//2が正常に作動するギリギリ
 	//medianBlur(bgrImage,blur,3);
@@ -2199,51 +2194,53 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	double diff;
 	int vel;
 	//ここまで
-	int rectSize = deviceManager->fullBodyRectDetected.size();
-	if (rectSize != 0) {
-		coordDetected.resize(deviceManager->fullBodyRectDetected.size());
-		for (int i = 0; i < deviceManager->fullBodyRectDetected.size(); i++) {
-			coordDetected[i].x = deviceManager->fullBodyRectDetected[i].x
-					+ deviceManager->fullBodyRectDetected[i].width / 2;
-			coordDetected[i].y = deviceManager->fullBodyRectDetected[i].y
-					+ deviceManager->fullBodyRectDetected[i].height / 2;
-		}
-
-		/*
-		 coordDetectedSS << "x:" << deviceManager->fullBodyRectDetected[0].x << " y:"
-				<< deviceManager->fullBodyRectDetected[0].y;
-		putText(infoWindow, coordDetectedSS.str(), Point(200, 100), FONT_ITALIC,
-				1.2, Scalar(255, 200, 100), 2, CV_AA);
-				*/
-		for (int i = 0; i < rectSize; i++) {
-			circle(infoWindow,
-					Point(deviceManager->fullBodyRectDetected[i].x,
-							deviceManager->fullBodyRectDetected[i].y), 3,
-					Scalar(255, 255, 255), -1);
-			circle(infoWindow, Point(coordDetected[i].x, coordDetected[i].y), 3,
-					Scalar(255, 255, 255), -1);
-			circle(infoWindow,
-					Point(
-							deviceManager->fullBodyRectDetected[i].x
-									+ deviceManager->fullBodyRectDetected[i].width,
-							deviceManager->fullBodyRectDetected[i].y
-									+ deviceManager->fullBodyRectDetected[i].height), 3,
-					Scalar(255, 255, 255), -1);
-		}
-	//ここから
-	//diff = pixToDig(coordDetected[0].x);
-	//vel = 100.0 * (diff / pixToDig(640));
-	//if(fabs(diff) < pixToDig(340)){
-	//	vel = 0;
-	//}
-	diff = (238.5 - (double)deviceManager->fullBodyRectDetected[0].height)/28.5;
-	if(fabs(diff) > 1.0) diff = diff/fabs(diff);
-	if(fabs(238.5 - (double)deviceManager->fullBodyRectDetected[0].height) < 10.0) diff = 0.0;
-	vel = 10.0 * diff;
-	velSS << "velocity" <<vel;
-	putText(infoWindow,velSS.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
-	//ここまで
-	}
+//	int rectSize = deviceManager->fullBodyRectDetected.size();
+//	if (rectSize != 0) {
+//		coordDetected.resize(deviceManager->fullBodyRectDetected.size());
+//		for (int i = 0; i < deviceManager->fullBodyRectDetected.size(); i++) {
+//			coordDetected[i].x = deviceManager->fullBodyRectDetected[i].x
+//					+ deviceManager->fullBodyRectDetected[i].width / 2;
+//			coordDetected[i].y = deviceManager->fullBodyRectDetected[i].y
+//					+ deviceManager->fullBodyRectDetected[i].height / 2;
+//		}
+//
+//		/*
+//		 coordDetectedSS << "x:" << deviceManager->fullBodyRectDetected[0].x << " y:"
+//				<< deviceManager->fullBodyRectDetected[0].y;
+//		putText(infoWindow, coordDetectedSS.str(), Point(200, 100), FONT_ITALIC,
+//				1.2, Scalar(255, 200, 100), 2, CV_AA);
+//				*/
+//		/*
+//		for (int i = 0; i < rectSize; i++) {
+//			circle(infoWindow,
+//					Point(deviceManager->fullBodyRectDetected[i].x,
+//							deviceManager->fullBodyRectDetected[i].y), 3,
+//					Scalar(255, 255, 255), -1);
+//			circle(infoWindow, Point(coordDetected[i].x, coordDetected[i].y), 3,
+//					Scalar(255, 255, 255), -1);
+//			circle(infoWindow,
+//					Point(
+//							deviceManager->fullBodyRectDetected[i].x
+//									+ deviceManager->fullBodyRectDetected[i].width,
+//							deviceManager->fullBodyRectDetected[i].y
+//									+ deviceManager->fullBodyRectDetected[i].height), 3,
+//					Scalar(255, 255, 255), -1);
+//		}
+//		*/
+//	//ここから
+//	//diff = pixToDig(coordDetected[0].x);
+//	//vel = 100.0 * (diff / pixToDig(640));
+//	//if(fabs(diff) < pixToDig(340)){
+//	//	vel = 0;
+//	//}
+//	diff = (238.5 - (double)deviceManager->fullBodyRectDetected[0].height)/28.5;
+//	if(fabs(diff) > 1.0) diff = diff/fabs(diff);
+//	if(fabs(238.5 - (double)deviceManager->fullBodyRectDetected[0].height) < 10.0) diff = 0.0;
+//	vel = 10.0 * diff;
+//	velSS << "velocity" <<vel;
+//	putText(infoWindow,velSS.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
+//	//ここまで
+//	}
 
 	putText(infoWindow,"autonomous flying",Point(184,320),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 	putText(infoWindow,eventSS.str(),Point(0,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
@@ -2278,13 +2275,13 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	case IHM_INPUT_EVENT_RIGHT:
 		if (deviceManager != NULL) {
 			deviceManager->dataPCMD.flag = 1;
-			deviceManager->dataPCMD.roll = 50;
+			deviceManager->dataPCMD.roll = 10;
 		}
 		break;
 	case IHM_INPUT_EVENT_LEFT:
 		if (deviceManager != NULL) {
 			deviceManager->dataPCMD.flag = 1;
-			deviceManager->dataPCMD.roll = -50;
+			deviceManager->dataPCMD.roll = -10;
 		}
 		break;
 
@@ -2299,7 +2296,8 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 
 		if (deviceManager->stats.size() > 1) {
 			//cameraControl(deviceManager,coordDetected);
-			//directionControl(deviceManager);
+			deviceManager->dataPCMD.flag = 1;
+			directionControl(deviceManager);
 			distanceControl(deviceManager);
 			//rollControl(deviceManager);
 //				if(coordDetected[0].x > 350){
@@ -2323,6 +2321,14 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 		}
 	    putText(infoWindow,print[0].str(),Point(0,100),0,0.5,Scalar(255,255,255));
 
+	}else{
+		deviceManager->dataPCMD.flag = 0;
+		deviceManager->dataPCMD.roll = 0;
+		deviceManager->dataPCMD.pitch = 0;
+		deviceManager->dataPCMD.yaw = 0;
+		deviceManager->dataPCMD.gaz = 0;
+		deviceManager->dataCam.pan = 0;
+		deviceManager->dataCam.tilt = 0;
 	}
 	//保険のために動かないようにする　動かすときは消す
 	/*
@@ -2366,7 +2372,7 @@ void directionControl(BD_MANAGER_t *deviceManager){
 
 	deviceManager->stats[1][CENTER_X];
 	diff = pixToDig(deviceManager->stats[1][CENTER_X]);
-	vel = 50.0 * (diff / pixToDig(640)); //100はやり過ぎ？ 最大が1になるようにpixToDig(640)で割っている
+	vel = 70 * (diff / pixToDig(640)); //100はやり過ぎ？ 最大が1になるようにpixToDig(640)で割っている
 	if(fabs(diff) < pixToDig(340)){	//中心からのピクセル距離が20以下なら速度を0に
 		vel = 0;
 	}
@@ -2377,22 +2383,21 @@ void directionControl(BD_MANAGER_t *deviceManager){
 
 void distanceControl(BD_MANAGER_t *deviceManager){
 	//この関数の各数値は計測し直す必要がある
-	//deviceManager->stats[1][CC_STAT_HEIGHT]となっているところを第一主成分にする
-	//人とドローンの距離が2mの時の人の第一主成分を計測し、238.5と置き換える
 	//1.5mと2.5mの時の第一主成分も計測し、2mの時の第一主成分との差をとって28.5と置き換える
+	//1000は人とdroneの距離が2mの時のfirtsEVの値　目標値
 	//2mより近づくと反対に制御入る　2m手前にはtilt角0区間がある
 	double diff, vel;
-	if ((1000.0 - (double) deviceManager->firstEV) < 100.0 && (1000.0 - (float) deviceManager->firstEV) >= 0.0) {
-		deviceManager->dataPCMD.flag = 0; //このままにするとyawかpitch満たした時に動かなくなるので、↑でいいようなら消す
+	/*if ((1000.0 - (double) deviceManager->firstEV) < 100.0 && (1000.0 - (float) deviceManager->firstEV) >= 0.0) {
 		diff = 0.0;
-	} else {
-		diff = (1000.0 - (double) deviceManager->firstEV) / 380.0; //最も離れた時のピクセルの差が28.5pixなのでその数字で割っている
-		if (fabs(diff) > 1.0)
-			diff = diff / fabs(diff);
-		vel = 10.0 * diff;
-		deviceManager->dataPCMD.flag = 1;
-		deviceManager->dataPCMD.pitch = vel;
 	}
+	else{
+			}*/
+	diff = (1000.0 - (double) deviceManager->firstEV) / 380.0; //最も離れた時のfirtsEVが380なのでその数字で割っている
+	if (fabs(diff) > 1.0) diff = diff / fabs(diff);
+
+	vel = 10.0 * diff;
+	deviceManager->dataPCMD.pitch = (int)vel;
+
 }
 
 void rollControl(BD_MANAGER_t *deviceManager){
@@ -2401,7 +2406,7 @@ void rollControl(BD_MANAGER_t *deviceManager){
 	//まず顔が検出できているかできていないかを判断する
 	//ここのroll値はすべて最大角の割合
 	//800は仮　十分に近づいているか？
-	if (deviceManager->firstEV > 800.0) {
+	if (deviceManager->firstEV > 600 && deviceManager->firstEV < 1700) {
 		if (deviceManager->faceRectDetected.size() != 0) {
 			deviceManager->findFace = 1;
 		} else {
@@ -2410,22 +2415,20 @@ void rollControl(BD_MANAGER_t *deviceManager){
 
 		//直前フレームの角度やピクセル情報を保持しているかチェック　していなければ代入
 		if (deviceManager->rollFlag == 0) {
-			//deviceManager->rollには何が入っているのか？ おそらく現在のroll角度(割合か角度か調べる必要がある)
+			//currentRollはrollの割合
 			deviceManager->currentRoll = 50;
-			deviceManager->dataPCMD.flag = 1;
 			deviceManager->dataPCMD.roll = deviceManager->currentRoll;	//とりあえず右に35*0.5度傾ける
 			deviceManager->rollFlag = 1;
 			return;
 		} else {	//直前の情報を保持していたら
 			deviceManager->pastRoll = deviceManager->currentRoll;
-			deviceManager->dataPCMD.flag = 1;
 			//rocが減少していればdifferenceROCは-1なので-pastRoll(反転)増加していれば向き変わらず,変化なければdifferenceROC=0なのでroll=0;
 			//一度0になると永遠に0のまま
 			//doubleからfloatにしてるのが怖い
 			//とりあえずROC-なら逆に、それ以外なら直前のroll角度と同じ方向に傾けることにする
 			if(deviceManager->differenceROC < 0.0){
 				deviceManager->currentRoll = deviceManager->pastRoll * (float)deviceManager->differenceROC;
-				deviceManager->dataPCMD.roll = deviceManager->currentRoll;;
+				deviceManager->dataPCMD.roll = deviceManager->currentRoll;
 			}else{
 				deviceManager->currentRoll = deviceManager->pastRoll;
 				deviceManager->dataPCMD.roll = deviceManager->currentRoll;
