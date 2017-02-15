@@ -2187,7 +2187,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 /************************** Autonomous flying part **************************/
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat infoWindow){
 	 // Manage IHM input events
-	stringstream velSS,coordDetectedSS,eventSS,print[1];
+	stringstream velSS,coordDetectedSS,eventSS,print[2];
 	eventSS << "event:" << event;
 	vector<Point> coordDetected;
 	//ここから
@@ -2299,7 +2299,8 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 			deviceManager->dataPCMD.flag = 1;
 			directionControl(deviceManager);
 			distanceControl(deviceManager);
-			//rollControl(deviceManager);
+			rollControl(deviceManager);
+			altitudeControl(deviceManager);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
@@ -2308,6 +2309,7 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 //					putText(infoWindow,"0",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}ssPrint[6] < "pitch:" << deviceManager->dataPCMD.pitch << " yaw:" << deviceManager->dataPCMD.yaw;
       		print[0] << "pitch:" << deviceManager->dataPCMD.pitch << "yaw:" << deviceManager->dataPCMD.yaw;
+      		print[1] << "gaz:" << deviceManager->dataPCMD.gaz;
 
 		} else {
 			deviceManager->dataPCMD.flag = 0;
@@ -2318,8 +2320,11 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 			deviceManager->dataCam.pan = 0;
 			deviceManager->dataCam.tilt = 0;
 		    print[0] << "pitch:" << deviceManager->dataPCMD.pitch << "yaw:" << deviceManager->dataPCMD.yaw;
+      		print[1] << "gaz:" << 0;
+
 		}
 	    putText(infoWindow,print[0].str(),Point(0,100),0,0.5,Scalar(255,255,255));
+	    putText(infoWindow,print[1].str(),Point(0,120),0,0.5,Scalar(255,255,255));
 
 	}else{
 		deviceManager->dataPCMD.flag = 0;
@@ -2370,7 +2375,6 @@ void directionControl(BD_MANAGER_t *deviceManager){
 	double diff;
 	int vel;
 
-	deviceManager->stats[1][CENTER_X];
 	diff = pixToDig(deviceManager->stats[1][CENTER_X]);
 	vel = 70 * (diff / pixToDig(640)); //100はやり過ぎ？ 最大が1になるようにpixToDig(640)で割っている
 	if(fabs(diff) < pixToDig(340)){	//中心からのピクセル距離が20以下なら速度を0に
@@ -2395,7 +2399,7 @@ void distanceControl(BD_MANAGER_t *deviceManager){
 	diff = (1000.0 - (double) deviceManager->firstEV) / 380.0; //最も離れた時のfirtsEVが380なのでその数字で割っている
 	if (fabs(diff) > 1.0) diff = diff / fabs(diff);
 
-	vel = 10.0 * diff;
+	vel = 10.0 * (diff/fabs(diff));
 	deviceManager->dataPCMD.pitch = (int)vel;
 
 }
@@ -2416,12 +2420,12 @@ void rollControl(BD_MANAGER_t *deviceManager){
 		//直前フレームの角度やピクセル情報を保持しているかチェック　していなければ代入
 		if (deviceManager->rollFlag == 0) {
 			//currentRollはrollの割合
-			deviceManager->currentRoll = 50;
-			deviceManager->dataPCMD.roll = deviceManager->currentRoll;	//とりあえず右に35*0.5度傾ける
+			deviceManager->currentRoll = 10;
+			deviceManager->dataPCMD.roll = deviceManager->currentRoll;	//とりあえず右に35*0.1度傾ける
+			deviceManager->pastRoll = deviceManager->currentRoll;
 			deviceManager->rollFlag = 1;
 			return;
 		} else {	//直前の情報を保持していたら
-			deviceManager->pastRoll = deviceManager->currentRoll;
 			//rocが減少していればdifferenceROCは-1なので-pastRoll(反転)増加していれば向き変わらず,変化なければdifferenceROC=0なのでroll=0;
 			//一度0になると永遠に0のまま
 			//doubleからfloatにしてるのが怖い
@@ -2439,6 +2443,7 @@ void rollControl(BD_MANAGER_t *deviceManager){
 	}else{
 		//rollをリセットするかしないか
 		//rollFlagをリセットするかしないか
+		deviceManager->dataPCMD.roll = 0;
 	}
 
 	//to do
@@ -2454,6 +2459,18 @@ void rollControl(BD_MANAGER_t *deviceManager){
 	//できていなければ、PPHが一定以上か以下かを判断する
 	//一定以下なら、目標値に近づくようにyawを右方向に傾ける
 	//一定以上なら、カウントを始める
+}
+
+void altitudeControl(BD_MANAGER_t *deviceManager){
+
+	if(deviceManager->stats[1][CENTER_Y] < 164){
+		deviceManager->dataPCMD.gaz = -10; //max vertical speed(1m/s)の割合
+	}else if(deviceManager->stats[1][CENTER_Y] > 204){
+		deviceManager->dataPCMD.gaz = 10;
+	}else{
+		deviceManager->dataPCMD.gaz = 0;
+	}
+
 }
 //中心から何度ずれているのか求める
 double pixToDig(const int pix){

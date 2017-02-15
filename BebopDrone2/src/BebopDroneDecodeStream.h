@@ -225,6 +225,7 @@ void cameraControl(BD_MANAGER_t *deviceManager,vector<Point> coordDetected);
 void directionControl(BD_MANAGER_t *deviceManager);
 void distanceControl(BD_MANAGER_t *deviceManager);
 void rollControl(BD_MANAGER_t *deviceManager);
+void altitudeControl(BD_MANAGER_t *deviceManager);
 double pixToDig(const int pix);
 void labeling(const Mat input,Mat &output,Mat &dst,BD_MANAGER_t *deviceManager,const int maxLabelNum);
 void exePca(const Mat input,BD_MANAGER_t *deviceManager);
