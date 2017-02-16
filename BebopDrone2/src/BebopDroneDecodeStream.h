@@ -35,7 +35,6 @@
 #include "ihm.h"
 #include "DecoderManager.h"
 #include <libARCommands/ARCommands.h>
-
 using namespace std;
 
 typedef struct
@@ -141,13 +140,15 @@ typedef struct
     bool downPPH;	//ピクセル/高さ　が下がったか
     bool ROCFlag;	//過去にROCを求めているか
     bool rollFlag;	//過去のroll値を保持しているか
+    bool rollControllFlag;
     int coordinatenum;
+    int rocCount;
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
     double altitude;
     float pastRoll,pastPixPerHeight,currentRoll,currentPixPerHeight,maxTargetPPH,minTargetPPH;	//pastRollはdegree
-    double pastROC,currentROC,differenceROC,firstEV,secondEV;
+    double pastROC,currentROC,differenceROC,firstEV,secondEV,rocArray[6];
 
 } BD_MANAGER_t;
 

@@ -66,6 +66,9 @@ extern "C"{
 #include "BebopDroneDecodeStream.h"
 //後付け
 #include <iostream>
+#include<fstream>
+
+std::ofstream rocLog;
 
 /*****************************************
  *
@@ -401,13 +404,15 @@ void* Decode_RunDataThread(void *customData)
                 }
 
 				if (decodedOut != NULL) {
-					if (deviceManager->imageFlag == 2) {
-						deviceManager->imageFlag = deviceManager->imageFlag % 2;
-						imageProc2(decodedOut, hog, deviceManager);
-					} else {
-						deviceManager->imageFlag++;
-					}
 					fwrite(decodedOut, pic_size, 1, deviceManager->video_out);
+//					if (deviceManager->imageFlag == 3) {
+//						deviceManager->imageFlag = deviceManager->imageFlag % 3;
+//						imageProc2(decodedOut, hog, deviceManager);
+//					} else {
+//						deviceManager->imageFlag++;
+//					}
+
+					imageProc2(decodedOut, hog, deviceManager);
 				}
 
                 free (decodedOut);
@@ -453,6 +458,16 @@ int main (int argc, char *argv[])
 {
 
     /* local declarations */
+    try{
+    	rocLog.open("rocLog.txt",std::ios::out);
+    	if(rocLog.fail()){
+    		throw "file reservation fail";
+    	}
+
+    }catch(const char* e){
+    	return 0;
+    }
+
     int failed = 0;
     BD_MANAGER_t *deviceManager = static_cast<BD_MANAGER_t *>(malloc(sizeof(BD_MANAGER_t)));
     pid_t child = 0;
@@ -516,55 +531,54 @@ int main (int argc, char *argv[])
         ARSAL_PRINT(ARSAL_PRINT_ERROR, TAG, "deviceManager alloc error !");
     }
 
-    if (!failed)
-    {
+	if (!failed) {
 
-        ARSAL_PRINT (ARSAL_PRINT_INFO, TAG, "-- Starting --");
+		ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "-- Starting --");
 
-        // initialize jsMnager
-        deviceManager->alManager = NULL;
-        deviceManager->netManager = NULL;
-        deviceManager->streamReader = NULL;
-        deviceManager->looperThread = NULL;
-        deviceManager->rxThread = NULL;
-        deviceManager->txThread = NULL;
-        deviceManager->videoRxThread = NULL;
-        deviceManager->videoTxThread = NULL;
-        deviceManager->d2cPort = BD_D2C_PORT;
-        deviceManager->c2dPort = BD_C2D_PORT; //deviceManager->c2dPort = 0; // Should be read from json
-        deviceManager->arstreamAckDelay = 0; // Should be read from json
-        deviceManager->arstreamFragSize = BD_NET_DC_VIDEO_FRAG_SIZE; // Should be read from json
-        deviceManager->arstreamFragNb   = BD_NET_DC_VIDEO_MAX_NUMBER_OF_FRAG; // Should be read from json
-        deviceManager->video_out = fopen(fifo_name, "w");
-        deviceManager->decoder = NULL;
-        deviceManager->decodingCanceled = 1;
-        deviceManager->decodingThread = NULL;
+		// initialize jsMnager
+		deviceManager->alManager = NULL;
+		deviceManager->netManager = NULL;
+		deviceManager->streamReader = NULL;
+		deviceManager->looperThread = NULL;
+		deviceManager->rxThread = NULL;
+		deviceManager->txThread = NULL;
+		deviceManager->videoRxThread = NULL;
+		deviceManager->videoTxThread = NULL;
+		deviceManager->d2cPort = BD_D2C_PORT;
+		deviceManager->c2dPort = BD_C2D_PORT; //deviceManager->c2dPort = 0; // Should be read from json
+		deviceManager->arstreamAckDelay = 0; // Should be read from json
+		deviceManager->arstreamFragSize = BD_NET_DC_VIDEO_FRAG_SIZE; // Should be read from json
+		deviceManager->arstreamFragNb = BD_NET_DC_VIDEO_MAX_NUMBER_OF_FRAG; // Should be read from json
+		deviceManager->video_out = fopen(fifo_name, "w");
+		deviceManager->decoder = NULL;
+		deviceManager->decodingCanceled = 1;
+		deviceManager->decodingThread = NULL;
 
-        deviceManager->ihm = NULL;
+		deviceManager->ihm = NULL;
 
-        deviceManager->hasReceivedFirstIFrame = 0;
+		deviceManager->hasReceivedFirstIFrame = 0;
 
-        deviceManager->freeRawFramePool = NULL;
-        deviceManager->rawFramePoolCapacity = 0;
-        deviceManager->lastRawFrameFreeIdx = 0;
+		deviceManager->freeRawFramePool = NULL;
+		deviceManager->rawFramePoolCapacity = 0;
+		deviceManager->lastRawFrameFreeIdx = 0;
 
-        deviceManager->rawFrameFifo = NULL;
-        deviceManager->fifoReadIdx = 0;
-        deviceManager->fifoWriteIdx = BD_RAW_FRAME_BUFFER_SIZE - 1;
-        deviceManager->run = 1;
+		deviceManager->rawFrameFifo = NULL;
+		deviceManager->fifoReadIdx = 0;
+		deviceManager->fifoWriteIdx = BD_RAW_FRAME_BUFFER_SIZE - 1;
+		deviceManager->run = 1;
 
-        deviceManager->dataPCMD.flag = 0;
-        deviceManager->dataPCMD.roll = 0;
-        deviceManager->dataPCMD.pitch = 0;
-        deviceManager->dataPCMD.yaw = 0;
-        deviceManager->dataPCMD.gaz = 0;
+		deviceManager->dataPCMD.flag = 0;
+		deviceManager->dataPCMD.roll = 0;
+		deviceManager->dataPCMD.pitch = 0;
+		deviceManager->dataPCMD.yaw = 0;
+		deviceManager->dataPCMD.gaz = 0;
 
-        deviceManager->dataCam.tilt = 0;
-        deviceManager->dataCam.pan = 0;
+		deviceManager->dataCam.tilt = 0;
+		deviceManager->dataCam.pan = 0;
 
-        deviceManager->faceCascade.load("haarcascade_frontalface_alt.xml");
-        deviceManager->fullbodyCascade.load("haarcascade_fullbody.xml");
-        deviceManager->upperbodyCascade.load("haarcascade_upperbody.xml");
+		deviceManager->faceCascade.load("haarcascade_frontalface_alt.xml");
+		deviceManager->fullbodyCascade.load("haarcascade_fullbody.xml");
+		deviceManager->upperbodyCascade.load("haarcascade_upperbody.xml");
 
 		deviceManager->imageFlag = 0;	//画像処理実行フラグ
 
@@ -573,17 +587,22 @@ int main (int argc, char *argv[])
 		deviceManager->pastPixPerHeight = 0;	//0は未入力という意味
 		deviceManager->pastROC = 0.0;
 		deviceManager->currentROC = 0.0;
-		deviceManager->eigenvectors = vector<vector<int> >(2,vector<int>(2,0));
+		deviceManager->eigenvectors = vector<vector<int> >(2,
+				vector<int>(2, 0));
 		deviceManager->ROCFlag = false;
 		deviceManager->differenceROC = 0.0;
 		deviceManager->firstEV = 0.0;
 		deviceManager->secondEV = 0.0;
-
+		deviceManager->rollControllFlag = false;
+		deviceManager->rocCount = 0;
+		for(int i = 0;i < 6;i++){
+			deviceManager->rocArray[i] = 0.0;
+		}
 		//deviceManager->ROC = vector<double>(0.0,0.0);
 		//deviceManager->rocCount = -1;
 		deviceManager->flyingState =
 				ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_MAX;
-    }
+	}
 
     if (!failed)
     {
@@ -2113,22 +2132,36 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		deviceManager->secondEV = pca.eigenvalues.at<double>(1);
 		//過去にrocとったなら
 		if(deviceManager->ROCFlag){
-
+			deviceManager->rocCount = deviceManager->rocCount % 5;
 			deviceManager->pastROC = deviceManager->currentROC;
 			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
 			//ROCの変化量を計算して代入
-			deviceManager->differenceROC = deviceManager->currentROC - deviceManager->pastROC;
+			deviceManager->rocArray[deviceManager->rocCount] = deviceManager->currentROC - deviceManager->pastROC;
 			//differenceROCの絶対値が0.1以下->誤差の範疇で人は動いていない
-			if(fabs(deviceManager->differenceROC) <= 0.01){
+			if(fabs(deviceManager->rocArray[deviceManager->rocCount]) <= 0.01){
 				//差はないことにする
-				deviceManager->differenceROC = 0.0;
+				deviceManager->rocArray[deviceManager->rocCount] = 0.0;
 				//差が正(ROC増加)
 			}else if(deviceManager->differenceROC > 0){
-				deviceManager->differenceROC = 1.0;
+				deviceManager->rocArray[deviceManager->rocCount] = 1.0;
 				//差が負(ROC減少)
 			}else{
-				deviceManager->differenceROC = -1.0;
+				deviceManager->rocArray[deviceManager->rocCount] = -1.0;
 			}
+			//difference集計
+			for(int i = 0;i < 6;i++){
+				deviceManager->differenceROC += deviceManager->rocArray[i];
+			}
+			//difference判定
+			if(deviceManager->differenceROC >= 2){
+				deviceManager->differenceROC = 1.0;
+			}else if(deviceManager->differenceROC <= -2){
+				deviceManager->differenceROC = -1.0;
+			}else{
+				deviceManager->differenceROC = 0.0;
+			}
+
+			deviceManager->rocCount++;
 			//とっていないなら
 		}else{
 			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
@@ -2146,6 +2179,10 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		deviceManager->ROCFlag = false;
 		deviceManager->firstEV = 0.0;
 		deviceManager->secondEV = 0.0;
+		deviceManager->rocCount = 0;
+		for(int i = 0;i < 6;i++){
+			deviceManager->rocArray[i] = 0;
+		}
 		ssPrint[0] << "Area - coordNum:" << 0;
 		ssPrint[1] << "ROC:" << 0;
 		ssPrint[2] << "eigenVecX:" << 0 << " eigenVecY:" << 0;
@@ -2187,7 +2224,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 /************************** Autonomous flying part **************************/
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat infoWindow){
 	 // Manage IHM input events
-	stringstream velSS,coordDetectedSS,eventSS,print[2];
+	stringstream velSS,coordDetectedSS,eventSS,print[4];
 	eventSS << "event:" << event;
 	vector<Point> coordDetected;
 	//ここから
@@ -2310,6 +2347,10 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 //				}ssPrint[6] < "pitch:" << deviceManager->dataPCMD.pitch << " yaw:" << deviceManager->dataPCMD.yaw;
       		print[0] << "pitch:" << deviceManager->dataPCMD.pitch << "yaw:" << deviceManager->dataPCMD.yaw;
       		print[1] << "gaz:" << deviceManager->dataPCMD.gaz;
+      		print[2] << "roll:" << deviceManager->dataPCMD.roll;
+      		print[3] << "rollControllFag:" << deviceManager->rollControllFlag;
+      		//deviceManager->ROCLog << (int)deviceManager->differenceROC << endl;
+      		//rocLog << (int)deviceManager->differenceROC << endl;
 
 		} else {
 			deviceManager->dataPCMD.flag = 0;
@@ -2321,10 +2362,14 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 			deviceManager->dataCam.tilt = 0;
 		    print[0] << "pitch:" << deviceManager->dataPCMD.pitch << "yaw:" << deviceManager->dataPCMD.yaw;
       		print[1] << "gaz:" << 0;
+      		print[2] << "roll:" << 0;
+      		print[3] << "rollControllFag:" << 0;
 
 		}
 	    putText(infoWindow,print[0].str(),Point(0,100),0,0.5,Scalar(255,255,255));
 	    putText(infoWindow,print[1].str(),Point(0,120),0,0.5,Scalar(255,255,255));
+	    putText(infoWindow,print[2].str(),Point(0,140),0,0.5,Scalar(255,255,255));
+	    putText(infoWindow,print[3].str(),Point(0,160),0,0.5,Scalar(255,255,255));
 
 	}else{
 		deviceManager->dataPCMD.flag = 0;
@@ -2410,13 +2455,13 @@ void rollControl(BD_MANAGER_t *deviceManager){
 	//まず顔が検出できているかできていないかを判断する
 	//ここのroll値はすべて最大角の割合
 	//800は仮　十分に近づいているか？
-	if (deviceManager->firstEV > 600 && deviceManager->firstEV < 1700) {
+	if (deviceManager->firstEV > 180 && deviceManager->firstEV < 2200) {
 		if (deviceManager->faceRectDetected.size() != 0) {
 			deviceManager->findFace = 1;
 		} else {
 			deviceManager->findFace = 0;
 		}
-
+		deviceManager->rollControllFlag = true;
 		//直前フレームの角度やピクセル情報を保持しているかチェック　していなければ代入
 		if (deviceManager->rollFlag == 0) {
 			//currentRollはrollの割合
@@ -2443,6 +2488,7 @@ void rollControl(BD_MANAGER_t *deviceManager){
 	}else{
 		//rollをリセットするかしないか
 		//rollFlagをリセットするかしないか
+		deviceManager->rollControllFlag = false;
 		deviceManager->dataPCMD.roll = 0;
 	}
 
@@ -2464,9 +2510,9 @@ void rollControl(BD_MANAGER_t *deviceManager){
 void altitudeControl(BD_MANAGER_t *deviceManager){
 
 	if(deviceManager->stats[1][CENTER_Y] < 164){
-		deviceManager->dataPCMD.gaz = -10; //max vertical speed(1m/s)の割合
+		deviceManager->dataPCMD.gaz = 10; //max vertical speed(1m/s)の割合
 	}else if(deviceManager->stats[1][CENTER_Y] > 204){
-		deviceManager->dataPCMD.gaz = 10;
+		deviceManager->dataPCMD.gaz = -10;
 	}else{
 		deviceManager->dataPCMD.gaz = 0;
 	}
