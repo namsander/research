@@ -100,6 +100,23 @@ std::ofstream rocLog;
 
 #define FRONT_ROC 0.695 //正面向いてる時のROC
 #define SIDE_ROC 0.135 //側面ROC
+#define Kpp 0.0026
+#define Kpi 0.00005
+#define Kpd 0.00005
+
+#define Kyp 0.0026
+#define Kyi 0.00005
+#define Kyd 0.00005
+
+#define Kgp 0.0026
+#define Kgi 0.00005
+#define Kgd 0.00005
+
+enum ContType {
+	CT_yaw,
+	CT_pitch,
+	CT_gaz
+};
 
 #define FIFO_DIR_PATTERN "/tmp/arsdk_XXXXXX"
 #define FIFO_NAME "arsdk_fifo"
@@ -589,17 +606,46 @@ int main (int argc, char *argv[])
 		deviceManager->currentROC = 0.0;
 		deviceManager->eigenvectors = vector<vector<int> >(2,
 				vector<int>(2, 0));
+		deviceManager->contVariable = vector<vector<double> >(3,vector<double>(300,0));	//4行300列の2次元vector初期化
 		deviceManager->ROCFlag = false;
 		deviceManager->differenceROC = 0.0;
 		deviceManager->firstEV = 0.0;
 		deviceManager->secondEV = 0.0;
 		deviceManager->rollControllFlag = false;
 		deviceManager->rocCount = 0;
+		deviceManager->Ese = 0.0;
+		deviceManager->Epe = 0.0;
+		deviceManager->Eppe = 0.0;
+		deviceManager->Ece = 0.0;
+
+		deviceManager->Mp = 0;
+		deviceManager->Mpp = 0;
+		deviceManager->Mpd = 0;
+
+		deviceManager->Epx = 0.0;
+		deviceManager->Eppx = 0.0;
+		deviceManager->Ecx = 0.0;
+
+		deviceManager->My = 0;
+		deviceManager->Mpy = 0;
+		deviceManager->Myd = 0;
+
+		deviceManager->Epy = 0.0;
+		deviceManager->Eppy = 0.0;
+		deviceManager->Ecy = 0.0;
+
+		deviceManager->Mg = 0;
+		deviceManager->Mpg = 0;
+		deviceManager->Mgd = 0;
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0.0;
 		}
+
+		deviceManager->gp = popen("gnuplot -persist","w"); //グラフ描画用のパイプを開き、gnuplotを立ち上げる
 		//deviceManager->ROC = vector<double>(0.0,0.0);
 		//deviceManager->rocCount = -1;
+		deviceManager->cameraCount = 0;
+		deviceManager->time = 0;
 		deviceManager->flyingState =
 				ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_MAX;
 	}
@@ -781,6 +827,9 @@ int main (int argc, char *argv[])
         stopDecoder (deviceManager);
         stopNetwork (deviceManager);
         fclose (deviceManager->video_out);
+        fprintf(deviceManager->gp,"exit\n");	//パイプを通してgnuplotを終了させる
+        fflush(deviceManager->gp);
+        pclose(deviceManager->gp);	//パイプを閉じる
         free (deviceManager);
     }
 
@@ -2066,11 +2115,13 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	unsigned int yHeight = 368;
 	unsigned int yWidth = 672;
 	unsigned int index = 0;
+	unsigned int printNum = 0;
 	Mat bgrImage(height,width,CV_8UC3);	//mat初期化
 	Mat yComp(height,width,CV_8UC1);
 	Mat uComp(height,width,CV_8UC1);
 	Mat vComp(height,width,CV_8UC1);
-	Mat print = Mat::zeros(Size(500,300),CV_8UC1);
+	Mat print = Mat::zeros(Size(500,500),CV_8UC1);
+	Mat plot = Mat::zeros(Size(800,500),CV_8UC1);
 	Mat yuvImage(height+height/2,width,CV_8UC1,frame); //Mat yuvImageをframeで初期化
 	Mat hsvImage(height,width,CV_8UC3);
 	Mat binary(height,width,CV_8UC1,Scalar(255));
@@ -2082,14 +2133,21 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	Mat dst(height,width,CV_8UC3,Scalar(0));
 	Mat output(height,width,CV_16UC1,Scalar(0));
 	vector<Mat> splitYUV(3);
-	stringstream ssPrint[6];
+	stringstream ssPrint[7];
+	stringstream ssPID[9];
 	vector<vector<int> > stats;
 	vector<vector<double> > centroids;
 	PCA pca;
 	int nLab;
 	int count = 0;
 	int coordinateNum = 0;
+	double plotX,plotY,plotT; //グラフ描画用に仮追加
+	deviceManager->cameraCount++;
 	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB); //yuvをbgrに変換
+	if(deviceManager->cameraCount == 150){
+		imwrite("color.jpg",bgrImage);
+	}
+
 	bilateralFilter(bgrImage,blur,-1,50,2);	//2が正常に作動するギリギリ
 	//medianBlur(bgrImage,blur,3);
 	cvtColor(blur,hsvImage,CV_BGR2HSV); //bgrをhsvに変換
@@ -2100,7 +2158,17 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		binary.data[i] = 0;
 		}
 	}
+	/*if(deviceManager->cameraCount == 150){
+		imwrite("hsv.jpg",hsvImage);
+		imwrite("binary_noisiy.jpg",binary);
+		imwrite("blur.jpg",blur);
+	}*/
     labeling(binary,output,dst,deviceManager,300);
+	/*if(deviceManager->cameraCount == 150){
+		imwrite("binary_clear.jpg",binary);
+		imwrite("label.jpg",dst);
+		deviceManager->cameraCount = 0;
+	}*/
     //binary画像のregion部分切り出し
 	if (deviceManager->stats.size() > 1) {
 		//regionのピクセル数分coordinate確保
@@ -2128,13 +2196,53 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 
 		//主成分分析実行
 		pca(coordinate,Mat(),CV_PCA_DATA_AS_ROW,2);
+		//過去にrocとったなら
+		if(deviceManager->ROCFlag){
+			//各データ引き継ぎ部
+			deviceManager->pastFEV = deviceManager->firstEV;
+			deviceManager->Eppe = deviceManager->Epe;
+			deviceManager->Epe = deviceManager->Ece;	//1フレーム前の第一固有値の偏差を代入
+
+			deviceManager->pastX = deviceManager->currentX;
+			deviceManager->Eppx = deviceManager->Epx;
+			deviceManager->Epx = deviceManager->Ecx;
+
+			deviceManager->pastY = deviceManager->currentY;
+			deviceManager->Eppy = deviceManager->Epy;
+			deviceManager->Epy = deviceManager->Ecy;
+
+		}else{
+			//各データリセット部
+			deviceManager->pastFEV = 0.0;
+			deviceManager->Epe = 0.0;
+			deviceManager->Eppe = 0.0;
+
+			deviceManager->pastX = 0.0;	//目標値が0.0なので初期値が0.0ではダメかもしれない
+			deviceManager->Eppx = 0.0;
+			deviceManager->Epx = 0.0;
+
+			deviceManager->pastY = 0.0;
+			deviceManager->Eppy = 0.0;
+			deviceManager->Epy = 0.0;
+		}
+		//各データ更新部
 		deviceManager->firstEV = pca.eigenvalues.at<double>(0);
 		deviceManager->secondEV = pca.eigenvalues.at<double>(1);
+		deviceManager->Ece = 1000.0 - deviceManager->firstEV;	//現在の第一固有値の偏差
+		deviceManager->Ese += deviceManager->Ece;	//第一固有値の累計偏差
+
+		deviceManager->currentX = pixToDig(deviceManager->stats[1][CENTER_X]);
+		deviceManager->Ecx = -deviceManager->currentX;
+
+		deviceManager->currentY = deviceManager->stats[1][CENTER_Y];
+		deviceManager->Ecy = 184 - deviceManager->currentY;	//184は画像の中心y座標 他の2つと偏差の計算が逆
+
 		//過去にrocとったなら
 		if(deviceManager->ROCFlag){
 			deviceManager->rocCount = deviceManager->rocCount % 5;
 			deviceManager->pastROC = deviceManager->currentROC;
 			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
+
 			//ROCの変化量を計算して代入
 			deviceManager->rocArray[deviceManager->rocCount] = deviceManager->currentROC - deviceManager->pastROC;
 			//differenceROCの絶対値が0.1以下->誤差の範疇で人は動いていない
@@ -2173,13 +2281,58 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[3] << "eigenValue1:" << pca.eigenvalues.at<double>(0) << " eigenValue2:" << pca.eigenvalues.at<double>(1);
 		ssPrint[4] << "differenceOfROC:" << deviceManager->differenceROC;
 		ssPrint[5] << "height:" << deviceManager->stats[1][CC_STAT_HEIGHT] << "width:" << deviceManager->stats[1][CC_STAT_WIDTH];
+		ssPrint[6] << "contVariable:" <<0;
+
+		//PID制御実験
+		deviceManager->Mpd = Kpp * (deviceManager->Ece - deviceManager->Epe) + Kpi * deviceManager->Ece + Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
+		deviceManager->Mp = deviceManager->Mpp + deviceManager->Mpd;
+		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp << "Mpd:" << deviceManager->Mpd;
+		ssPID[1] << "Ece:" << deviceManager->Ece << " Epe:" << deviceManager->Epe << " Eppe:" << deviceManager->Eppe;
+		ssPID[2] << "P:" << Kpp * (deviceManager->Ece - deviceManager->Epe) << " I:" << Kpi * deviceManager->Ece << " D:" << Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
+		deviceManager->Mpp = deviceManager->Mp;
+
+		deviceManager->Myd = Kyp * (deviceManager->Ecx - deviceManager->Epx) + Kyi * deviceManager->Ecx + Kyd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
+		deviceManager->My = deviceManager->Mpy + deviceManager->Myd;
+		ssPID[3] << "My:" << deviceManager->My << "Mpy:" << deviceManager->Mpy << "Myd:" << deviceManager->Myd;
+		ssPID[4] << "Ecx:" << deviceManager->Ecx << " Epx:" << deviceManager->Epx << " Eppx:" << deviceManager->Eppx;
+		ssPID[5] << "P:" << Kyp * (deviceManager->Ecx - deviceManager->Epx) << " I:" << Kyi * deviceManager->Ecx << " D:" << Kyd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
+		deviceManager->Mpy = deviceManager->My;
+
+		deviceManager->Mgd = Kgp * (deviceManager->Ecy - deviceManager->Epy) + Kgi * deviceManager->Ecy + Kgd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
+		deviceManager->Mg = deviceManager->Mpg + deviceManager->Mgd;
+		ssPID[6] << "Mg:" << deviceManager->Mg << "Mpg:" << deviceManager->Mpg << "Mgd:" << deviceManager->Mgd;
+		ssPID[7] << "Ecy:" << deviceManager->Ecy << " Epy:" << deviceManager->Epy << " Eppy:" << deviceManager->Eppy;
+		ssPID[8] << "P:" << Kgp * (deviceManager->Ecy - deviceManager->Epy) << " I:" << Kgi * deviceManager->Ecy << " D:" << Kgd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
+		deviceManager->Mpg = deviceManager->Mg;
 		//imshow("cutImage",cutImage);
-	}else{
+	}else{	//人未検出
 		//ROCFlagはドローンと人の距離が離れた場合にも呼ぶ必要がある
 		deviceManager->ROCFlag = false;
 		deviceManager->firstEV = 0.0;
 		deviceManager->secondEV = 0.0;
 		deviceManager->rocCount = 0;
+		deviceManager->Ece = 0.0;
+		deviceManager->Epe = 0.0;
+		deviceManager->Eppe = 0.0;
+		deviceManager->Ese = 0.0;
+		deviceManager->pastFEV = 0.0;
+		deviceManager->Mp = 0.0;
+		deviceManager->Mpp = 0.0;
+		deviceManager->Mpd = 0.0;
+
+		deviceManager->pastX = 0.0;	//目標値が0.0なので初期値が0.0ではダメかもしれない
+		deviceManager->Eppx = 0.0;
+		deviceManager->Epx = 0.0;
+		deviceManager->My = 0.0;
+		deviceManager->Mpy = 0.0;
+		deviceManager->Myd = 0.0;
+
+		deviceManager->pastY = 0.0;
+		deviceManager->Eppy = 0.0;
+		deviceManager->Epy = 0.0;
+		deviceManager->Mg = 0.0;
+		deviceManager->Mpg = 0.0;
+		deviceManager->Mgd = 0.0;
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0;
 		}
@@ -2189,9 +2342,18 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[3] << "eigenValue1:" << 0 << " eigenValue2:" << 0;
 		ssPrint[4] << "differenceOfROC:" << 0;
 		ssPrint[5] << "height:" << 0 << "width:" << 0;
+		ssPrint[6] << "plotY:" << 0;
+		ssPID[0] << "Mp:" << 0 << "Mpp:" << 0 << "Mpd:" << 0;
+		ssPID[1] << "Ece:" << 0 << " Epe:" << 0 << " Eppe:" << 0;
+		ssPID[2] << "P:" << 0 << " I:" << 0 << " D:" << 0;
+		ssPID[3] << "My:" << 0 << "Mpy:" << 0 << "Myd:" << 0;
+		ssPID[4] << "Ecx:" << 0 << " Epx:" << 0 << " Eppx:" << 0;
+		ssPID[5] << "P:" << 0 << " I:" << 0 << " D:" << 0;
+		ssPID[6] << "Mg:" << 0 << "Mpg:" << 0 << "Mgd:" << 0;
+		ssPID[7] << "Ecy:" << 0 << " Epy:" << 0 << " Eppy:" << 0;
+		ssPID[8] << "P:" << 0 << " I:" << 0 << " D:" << 0;
 
 	}
-
 	/*for(int i = 0;i < yHeight*yWidth; i++){
 
 		if((i%yWidth)+1 > width) continue;
@@ -2201,12 +2363,73 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		//vComp.data[index] = frame->componentArray[2].data[i/2];
 		index++;
 	}*/
-	putText(print,ssPrint[0].str(),Point(0,40),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[1].str(),Point(0,80),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[2].str(),Point(0,120),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[3].str(),Point(0,160),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[4].str(),Point(0,200),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[5].str(),Point(0,240),0,0.5,Scalar(255,255,255));
+
+//確認のため消した
+	//グラフ表示部
+
+	fprintf(deviceManager->gp,"set xrange [0:10]\n");	//範囲の指定
+	fprintf(deviceManager->gp,"set yrange [-1.2:1.2]\n");
+	fprintf(deviceManager->gp,"set xlabel \"x\"\n");	//ラベル表示
+	fprintf(deviceManager->gp,"set ylabel \"y\"\n");
+	fprintf(deviceManager->gp,"plot '-' with lines linetype 1\n");
+	for(int i = 0;i < 100;++i){
+		plotT = 0.2*i;
+		plotX = sin(plotT+0.1*deviceManager->time);
+		plotY = plotT;
+		fprintf(deviceManager->gp,"%f\t%f\n",plotY,plotX);
+
+	}
+	fprintf(deviceManager->gp,"e\n");
+
+	//確認のため消した
+/*
+
+	//グラフ表示用データ配列更新
+	if(deviceManager->time < 300){
+		deviceManager->contVariable[CT_yaw][deviceManager->time] = deviceManager->stats[1][CENTER_X];	//グラフ表示用のyaw(0)行time列に人のX座標代入
+	}else{
+		for(int i = 0;i < 299;i++){
+			deviceManager->contVariable[CT_yaw][i] = deviceManager->contVariable[CT_yaw][i+1];
+		}
+		deviceManager->contVariable[CT_yaw][deviceManager->time-1] = deviceManager->stats[1][CENTER_X];
+	}
+
+	//グラフプロパティ設定
+	fprintf(deviceManager->gp,"set xrange [0:300]\n");	//範囲の指定
+	fprintf(deviceManager->gp,"set yrange [0:640]\n");
+	fprintf(deviceManager->gp,"set xlabel \"time\"\n");	//ラベル表示
+	fprintf(deviceManager->gp,"set ylabel \"pixelX\"\n");
+
+	//グラフ描画
+	fprintf(deviceManager->gp,"plot '-' with lines linetype 1\n");
+	for(int i = 0;i < deviceManager->time;++i){
+		//plotY = deviceManager->contVariable[CT_yaw][i];
+		plotY = 184 + i;
+		plotX = deviceManager->time;
+		fprintf(deviceManager->gp,"%f\t%f\n",plotX,plotY);
+
+
+	}
+	fprintf(deviceManager->gp,"e\n");
+*/
+
+	putText(print,ssPrint[0].str(),Point(0,10),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[1].str(),Point(0,30),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[2].str(),Point(0,50),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[3].str(),Point(0,70),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[4].str(),Point(0,90),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[5].str(),Point(0,110),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[6].str(),Point(0,130),0,0.5,Scalar(255,255,255));
+	//表示部
+	for(int i = 0,j = 0;i < 9,j <= 220;i++,j+=20){
+		if(i % 3 == 0){
+			j += 20;
+		}
+		printNum = 130 + j;
+
+		putText(print,ssPID[i].str(),Point(0,printNum),0,0.5,Scalar(255,255,255));
+	}
+	printNum = 0;
 	//deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
 	imshow("binary",binary);
 	imshow("frame",print);
@@ -2218,6 +2441,15 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	//imshow("s",channels[1]);
 	//imshow("v",channels[2]);
 
+	//確認のため消す
+	//グラフ表示用の仮時間変数
+	/*
+	if(deviceManager->time < 300){
+		deviceManager->time++;
+	}
+*/
+	deviceManager->time++;
+	deviceManager->time = deviceManager->time%101;
 	waitKey(1);
 	return;
 }
@@ -2425,7 +2657,11 @@ void directionControl(BD_MANAGER_t *deviceManager){
 	if(fabs(diff) < pixToDig(340)){	//中心からのピクセル距離が20以下なら速度を0に
 		vel = 0;
 	}
+
+	deviceManager->Myd = Kyp * (deviceManager->Ecx - deviceManager->Epx) + Kyi * deviceManager->Ecy + Kyd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
+	deviceManager->My = deviceManager->Mpy + deviceManager->Myd;
 	deviceManager->dataPCMD.yaw = vel;
+	deviceManager->Mpy = deviceManager->My;
 
 }
 
@@ -2435,17 +2671,21 @@ void distanceControl(BD_MANAGER_t *deviceManager){
 	//1.5mと2.5mの時の第一主成分も計測し、2mの時の第一主成分との差をとって28.5と置き換える
 	//1000は人とdroneの距離が2mの時のfirtsEVの値　目標値
 	//2mより近づくと反対に制御入る　2m手前にはtilt角0区間がある
-	double diff, vel;
+	double diff, vel,kp,ki,kd;
 	/*if ((1000.0 - (double) deviceManager->firstEV) < 100.0 && (1000.0 - (float) deviceManager->firstEV) >= 0.0) {
 		diff = 0.0;
 	}
 	else{
 			}*/
+	//vel = kp * deviceManager->Ece + ki * deviceManager->Esie + kd * (deviceManager->Ece - deviceManager->Epe);
+	deviceManager->Mpd = Kpp * (deviceManager->Ece - deviceManager->Epe) + Kpi * deviceManager->Ece + Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
+	deviceManager->Mp = deviceManager->Mpp + deviceManager->Mpd;
 	diff = (1000.0 - (double) deviceManager->firstEV) / 380.0; //最も離れた時のfirtsEVが380なのでその数字で割っている
 	if (fabs(diff) > 1.0) diff = diff / fabs(diff);
 
 	vel = 10.0 * (diff/fabs(diff));
 	deviceManager->dataPCMD.pitch = (int)vel;
+	deviceManager->Mpp = deviceManager->Mp;
 
 }
 
@@ -2516,6 +2756,9 @@ void altitudeControl(BD_MANAGER_t *deviceManager){
 	}else{
 		deviceManager->dataPCMD.gaz = 0;
 	}
+	deviceManager->Mgd = Kgp * (deviceManager->Ecx - deviceManager->Epx) + Kgi * deviceManager->Ecx + Kgd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
+	deviceManager->Mg = deviceManager->Mpg + deviceManager->Mgd;
+	deviceManager->Mpg = deviceManager->Mg;
 
 }
 //中心から何度ずれているのか求める

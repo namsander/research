@@ -35,6 +35,7 @@
 #include <curses.h>
 #include <libARSAL/ARSAL.h>
 #include <opencv.hpp>
+#include <opencv2/imgcodecs.hpp>
 using namespace cv;
 typedef enum
 {
