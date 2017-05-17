@@ -146,6 +146,7 @@ typedef struct
     int rocCount;
     int cameraCount;
     int time;	//グラフ描画用に仮追加
+    int plotType; //プロットする情報を選択するための番号
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
@@ -153,6 +154,7 @@ typedef struct
     float pastRoll,pastPixPerHeight,currentRoll,currentPixPerHeight,maxTargetPPH,minTargetPPH;	//pastRollはdegree
     double pastROC,currentROC,differenceROC,firstEV,secondEV,rocArray[6],pastFEV,Ece,Epe,Eppe,Ese,Mpp,Mp,Mpd,
 	currentX,currentY,pastX,pastY,Ecx,Epx,Eppx,Ecy,Epy,Eppy,Mpg,Mg,Mgd,Mpy,My,Myd;
+    double Kppitch,Kpy,Kpg;	//ゲイン手動調節用変数
     //pastFEV:1フレーム前の第一固有値 Ece:現在の第一固有値の偏差 Epe:1フレーム前の第一固有値の偏差 Eppe:2フレーム前の第一固有値の偏差 Ese:第一固有値の累計偏差
     //Mp:pitch操作量 Mpd:pitch操作量の差分 Mpp:1フレーム前のpicth操作量
     //currentX:現在の人X座標,currentY:現在の人Y座標,pastX:1フレーム前の人x座標,pastY:1フレーム前の人y座標,Ecx:現在のx座標偏差,Epx:1フレーム前のx座標偏差,Eppx:2フレーム前のx座標偏差,Ecy:現在のy座標偏差,Epy:1フレーム前のy座標偏差,Eppy:2フレーム前のy座標偏差
@@ -239,4 +241,5 @@ void labeling(const Mat input,Mat &output,Mat &dst,BD_MANAGER_t *deviceManager,c
 void exePca(const Mat input,BD_MANAGER_t *deviceManager);
 template<class T>
 bool areaComparator(const vector<T>& a,const vector<T>& b);
+void plotGraph(BD_MANAGER_t *deviceManager);
 #endif /* _SDK_EXAMPLE_BD_H_ */

@@ -637,6 +637,11 @@ int main (int argc, char *argv[])
 		deviceManager->Mg = 0;
 		deviceManager->Mpg = 0;
 		deviceManager->Mgd = 0;
+		deviceManager->plotType = 0;
+		deviceManager->Kpg = 0;
+		deviceManager->Kppitch = 0;
+		deviceManager->Kpy = 0;
+
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0.0;
 		}
@@ -2141,7 +2146,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	int nLab;
 	int count = 0;
 	int coordinateNum = 0;
-	double plotX,plotY,plotT; //グラフ描画用に仮追加
+	int key = 0;
 	deviceManager->cameraCount++;
 	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB); //yuvをbgrに変換
 	if(deviceManager->cameraCount == 150){
@@ -2281,7 +2286,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[3] << "eigenValue1:" << pca.eigenvalues.at<double>(0) << " eigenValue2:" << pca.eigenvalues.at<double>(1);
 		ssPrint[4] << "differenceOfROC:" << deviceManager->differenceROC;
 		ssPrint[5] << "height:" << deviceManager->stats[1][CC_STAT_HEIGHT] << "width:" << deviceManager->stats[1][CC_STAT_WIDTH];
-		ssPrint[6] << "contVariable:" <<0;
+		ssPrint[6] << "plotType:" << (double)deviceManager->plotType;
 
 		//PID制御実験
 		deviceManager->Mpd = Kpp * (deviceManager->Ece - deviceManager->Epe) + Kpi * deviceManager->Ece + Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
@@ -2342,7 +2347,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[3] << "eigenValue1:" << 0 << " eigenValue2:" << 0;
 		ssPrint[4] << "differenceOfROC:" << 0;
 		ssPrint[5] << "height:" << 0 << "width:" << 0;
-		ssPrint[6] << "plotY:" << 0;
+		ssPrint[6] << "plotType:" << 0;
 		ssPID[0] << "Mp:" << 0 << "Mpp:" << 0 << "Mpd:" << 0;
 		ssPID[1] << "Ece:" << 0 << " Epe:" << 0 << " Eppe:" << 0;
 		ssPID[2] << "P:" << 0 << " I:" << 0 << " D:" << 0;
@@ -2364,54 +2369,9 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		index++;
 	}*/
 
-//確認のため消した
-	//グラフ表示部
-
-	fprintf(deviceManager->gp,"set xrange [0:10]\n");	//範囲の指定
-	fprintf(deviceManager->gp,"set yrange [-1.2:1.2]\n");
-	fprintf(deviceManager->gp,"set xlabel \"x\"\n");	//ラベル表示
-	fprintf(deviceManager->gp,"set ylabel \"y\"\n");
-	fprintf(deviceManager->gp,"plot '-' with lines linetype 1\n");
-	for(int i = 0;i < 100;++i){
-		plotT = 0.2*i;
-		plotX = sin(plotT+0.1*deviceManager->time);
-		plotY = plotT;
-		fprintf(deviceManager->gp,"%f\t%f\n",plotY,plotX);
-
-	}
-	fprintf(deviceManager->gp,"e\n");
-
-	//確認のため消した
-/*
-
-	//グラフ表示用データ配列更新
-	if(deviceManager->time < 300){
-		deviceManager->contVariable[CT_yaw][deviceManager->time] = deviceManager->stats[1][CENTER_X];	//グラフ表示用のyaw(0)行time列に人のX座標代入
-	}else{
-		for(int i = 0;i < 299;i++){
-			deviceManager->contVariable[CT_yaw][i] = deviceManager->contVariable[CT_yaw][i+1];
-		}
-		deviceManager->contVariable[CT_yaw][deviceManager->time-1] = deviceManager->stats[1][CENTER_X];
-	}
-
-	//グラフプロパティ設定
-	fprintf(deviceManager->gp,"set xrange [0:300]\n");	//範囲の指定
-	fprintf(deviceManager->gp,"set yrange [0:640]\n");
-	fprintf(deviceManager->gp,"set xlabel \"time\"\n");	//ラベル表示
-	fprintf(deviceManager->gp,"set ylabel \"pixelX\"\n");
-
 	//グラフ描画
-	fprintf(deviceManager->gp,"plot '-' with lines linetype 1\n");
-	for(int i = 0;i < deviceManager->time;++i){
-		//plotY = deviceManager->contVariable[CT_yaw][i];
-		plotY = 184 + i;
-		plotX = deviceManager->time;
-		fprintf(deviceManager->gp,"%f\t%f\n",plotX,plotY);
 
-
-	}
-	fprintf(deviceManager->gp,"e\n");
-*/
+	plotGraph(deviceManager);
 
 	putText(print,ssPrint[0].str(),Point(0,10),0,0.5,Scalar(255,255,255));
 	putText(print,ssPrint[1].str(),Point(0,30),0,0.5,Scalar(255,255,255));
@@ -2420,6 +2380,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	putText(print,ssPrint[4].str(),Point(0,90),0,0.5,Scalar(255,255,255));
 	putText(print,ssPrint[5].str(),Point(0,110),0,0.5,Scalar(255,255,255));
 	putText(print,ssPrint[6].str(),Point(0,130),0,0.5,Scalar(255,255,255));
+
 	//表示部
 	for(int i = 0,j = 0;i < 9,j <= 220;i++,j+=20){
 		if(i % 3 == 0){
@@ -2440,19 +2401,163 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	//imshow("h",channels[0]);
 	//imshow("s",channels[1]);
 	//imshow("v",channels[2]);
+	key = waitKey(1);
 
-	//確認のため消す
-	//グラフ表示用の仮時間変数
-	/*
+	switch(key){
+	//キー1
+	case 1048625:
+		deviceManager->plotType = 0;
+		break;
+	//キー2
+	case 1048626:
+		deviceManager->plotType = 1;
+		break;
+	//キー3
+	case 1048627:
+		deviceManager->plotType = 2;
+		break;
+	default:
+		break;
+	}
+
+	//ゲイン微調整
+	switch(deviceManager->plotType){
+	//キー0
+	case 1048624:
+		//キー↑
+		if(key == 1113938){
+			deviceManager->Kpy = deviceManager->Kpy + 0.01;
+			//キー↓
+		}else if(key == 1113940){
+			deviceManager->Kpy = deviceManager->Kpy - 0.01;
+		}
+		break;
+	//キー1
+	case 1048625:
+		if(key == 1113938){
+			deviceManager->Kppitch = deviceManager->Kppitch + 0.01;
+		}else if(key == 1113940){
+			deviceManager->Kppitch = deviceManager->Kppitch - 0.01;
+		}
+		break;
+	//キー2
+	case 1048626:
+		if(key == 1113938){
+			deviceManager->Kpg = deviceManager->Kpg + 0.01;
+		}else if(key == 1113940){
+			deviceManager->Kpg = deviceManager->Kpg - 0.01;
+		}
+		break;
+	default:
+		break;
+
+	}
+
+	return;
+}
+
+void plotGraph(BD_MANAGER_t *deviceManager){
+	int j;
+	//グラフ表示用データ配列更新
+	if(deviceManager->time < 300){
+		deviceManager->contVariable[CT_yaw][deviceManager->time] = deviceManager->stats[1][CENTER_X];	//グラフ表示用のyaw(0)行time列に人のX座標代入
+		deviceManager->contVariable[CT_gaz][deviceManager->time] = deviceManager->stats[1][CENTER_Y];
+		deviceManager->contVariable[CT_pitch][deviceManager->time] = deviceManager->firstEV;
+	}else{
+		for(int i = 0;i < 299;i++){
+			deviceManager->contVariable[CT_yaw][i] = deviceManager->contVariable[CT_yaw][i+1];
+			deviceManager->contVariable[CT_gaz][i] = deviceManager->contVariable[CT_gaz][i+1];
+			deviceManager->contVariable[CT_pitch][i] = deviceManager->contVariable[CT_pitch][i+1];
+		}
+		deviceManager->contVariable[CT_yaw][deviceManager->time-1] = deviceManager->stats[1][CENTER_X];
+		deviceManager->contVariable[CT_gaz][deviceManager->time-1] = deviceManager->stats[1][CENTER_Y];
+		deviceManager->contVariable[CT_pitch][deviceManager->time-1] = deviceManager->firstEV;
+	}
+
+	switch(deviceManager->plotType){
+	case 0:
+		//描画設定
+		fprintf(deviceManager->gp,"set xrange [0:300]\n");	//範囲の指定
+		fprintf(deviceManager->gp,"set yrange [0:640]\n");
+		fprintf(deviceManager->gp,"set xlabel \"time\"\n");	//ラベル表示
+		fprintf(deviceManager->gp,"set ylabel \"pixelX\"\n");
+		fprintf(deviceManager->gp,"set xtics 0,30,300\n");	//x軸メモリ設定
+		fprintf(deviceManager->gp,"set grid xtics\n");	//x軸グリッド線設定
+		fprintf(deviceManager->gp,"set style arrow 1 nohead\n");	//矢印の頭消す設定
+		fprintf(deviceManager->gp,"set arrow 1 from 0,320 to 300,320 arrowstyle 1\n");	//矢印の描画範囲設定
+		fprintf(deviceManager->gp,"set time\n");	//現在時刻表示
+
+		//描画データ入力
+		fprintf(deviceManager->gp,"plot '-' with lines linetype 1\n");
+		j = 0;
+		do{
+			fprintf(deviceManager->gp,"%f\t%f\n",(double)j,deviceManager->contVariable[CT_yaw][j]);
+			j++;
+		}while(j < deviceManager->time);
+		//描画実行
+		fprintf(deviceManager->gp,"e\n");
+
+		break;
+
+	case 1:
+
+		fprintf(deviceManager->gp,"set xrange [0:300]\n");	//範囲の指定
+		fprintf(deviceManager->gp,"set yrange [0:2000]\n");
+		fprintf(deviceManager->gp,"set xlabel \"time\"\n");	//ラベル表示
+		fprintf(deviceManager->gp,"set ylabel \"eigenvalue\"\n");
+		fprintf(deviceManager->gp,"set xtics 0,30,300\n");
+		fprintf(deviceManager->gp,"set grid xtics\n");
+		fprintf(deviceManager->gp,"set style arrow 1 nohead\n");
+		fprintf(deviceManager->gp,"set arrow 1 from 0,1000 to 300,1000 arrowstyle 1\n");
+		fprintf(deviceManager->gp,"set time\n");
+
+
+		fprintf(deviceManager->gp,"plot '-' with lines linetype 1\n");
+		j = 0;
+		do{
+			fprintf(deviceManager->gp,"%f\t%f\n",(double)j,deviceManager->contVariable[CT_pitch][j]);
+			j++;
+		}while(j < deviceManager->time);
+		//描画実行
+		fprintf(deviceManager->gp,"e\n");
+
+		break;
+
+	case 2:
+
+		fprintf(deviceManager->gp,"set xrange [0:300]\n");	//範囲の指定
+		fprintf(deviceManager->gp,"set yrange [0:368]\n");
+		fprintf(deviceManager->gp,"set xlabel \"time\"\n");	//ラベル表示
+		fprintf(deviceManager->gp,"set ylabel \"pixelY\"\n");
+		fprintf(deviceManager->gp,"set xtics 0,30,300\n");
+		fprintf(deviceManager->gp,"set grid xtics\n");
+		fprintf(deviceManager->gp,"set style arrow 1 nohead\n");
+		fprintf(deviceManager->gp,"set arrow 1 from 0,184 to 300,184 arrowstyle 1\n");
+		fprintf(deviceManager->gp,"set time\n");
+
+
+		fprintf(deviceManager->gp,"plot '-' with lines linetype 1\n");
+		j = 0;
+		do{
+			fprintf(deviceManager->gp,"%f\t%f\n",(double)j,deviceManager->contVariable[CT_gaz][j]);
+			j++;
+		}while(j < deviceManager->time);
+		//描画実行
+		fprintf(deviceManager->gp,"e\n");
+		break;
+
+	default:
+		break;
+
+	}
+	//時間更新
 	if(deviceManager->time < 300){
 		deviceManager->time++;
 	}
-*/
-	deviceManager->time++;
-	deviceManager->time = deviceManager->time%101;
-	waitKey(1);
+
 	return;
 }
+
 /************************** Autonomous flying part **************************/
 void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat infoWindow){
 	 // Manage IHM input events
@@ -2652,15 +2757,17 @@ void directionControl(BD_MANAGER_t *deviceManager){
 	double diff;
 	int vel;
 
+	/*
 	diff = pixToDig(deviceManager->stats[1][CENTER_X]);
 	vel = 70 * (diff / pixToDig(640)); //100はやり過ぎ？ 最大が1になるようにpixToDig(640)で割っている
 	if(fabs(diff) < pixToDig(340)){	//中心からのピクセル距離が20以下なら速度を0に
 		vel = 0;
 	}
+*/
 
 	deviceManager->Myd = Kyp * (deviceManager->Ecx - deviceManager->Epx) + Kyi * deviceManager->Ecy + Kyd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
 	deviceManager->My = deviceManager->Mpy + deviceManager->Myd;
-	deviceManager->dataPCMD.yaw = vel;
+	deviceManager->dataPCMD.yaw = deviceManager->My;
 	deviceManager->Mpy = deviceManager->My;
 
 }
@@ -2678,13 +2785,18 @@ void distanceControl(BD_MANAGER_t *deviceManager){
 	else{
 			}*/
 	//vel = kp * deviceManager->Ece + ki * deviceManager->Esie + kd * (deviceManager->Ece - deviceManager->Epe);
-	deviceManager->Mpd = Kpp * (deviceManager->Ece - deviceManager->Epe) + Kpi * deviceManager->Ece + Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
-	deviceManager->Mp = deviceManager->Mpp + deviceManager->Mpd;
+
+
+	/*
 	diff = (1000.0 - (double) deviceManager->firstEV) / 380.0; //最も離れた時のfirtsEVが380なのでその数字で割っている
 	if (fabs(diff) > 1.0) diff = diff / fabs(diff);
 
 	vel = 10.0 * (diff/fabs(diff));
 	deviceManager->dataPCMD.pitch = (int)vel;
+	*/
+	deviceManager->Mpd = Kpp * (deviceManager->Ece - deviceManager->Epe) + Kpi * deviceManager->Ece + Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
+	deviceManager->Mp = deviceManager->Mpp + deviceManager->Mpd;
+	deviceManager->dataPCMD.pitch = deviceManager->Mp;
 	deviceManager->Mpp = deviceManager->Mp;
 
 }
@@ -2748,7 +2860,7 @@ void rollControl(BD_MANAGER_t *deviceManager){
 }
 
 void altitudeControl(BD_MANAGER_t *deviceManager){
-
+/*
 	if(deviceManager->stats[1][CENTER_Y] < 164){
 		deviceManager->dataPCMD.gaz = 10; //max vertical speed(1m/s)の割合
 	}else if(deviceManager->stats[1][CENTER_Y] > 204){
@@ -2756,8 +2868,14 @@ void altitudeControl(BD_MANAGER_t *deviceManager){
 	}else{
 		deviceManager->dataPCMD.gaz = 0;
 	}
+	*/
+	//更新量計算
 	deviceManager->Mgd = Kgp * (deviceManager->Ecx - deviceManager->Epx) + Kgi * deviceManager->Ecx + Kgd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
+	//操作量計算
 	deviceManager->Mg = deviceManager->Mpg + deviceManager->Mgd;
+	//操作量送信
+	deviceManager->dataPCMD.gaz = deviceManager->Mg;
+	//1フレーム前の操作量に現在の操作量を代入
 	deviceManager->Mpg = deviceManager->Mg;
 
 }
