@@ -2288,29 +2288,20 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[5] << "height:" << deviceManager->stats[1][CC_STAT_HEIGHT] << "width:" << deviceManager->stats[1][CC_STAT_WIDTH];
 
 		//PID制御実験
-		deviceManager->Mpd = (Kpp + deviceManager->Kppitch) * (deviceManager->Ece - deviceManager->Epe) + Kpi * deviceManager->Ece + Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
-		deviceManager->Mp = deviceManager->Mpp + deviceManager->Mpd;
 		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp << "Mpd:" << deviceManager->Mpd;
 		ssPID[1] << "Ece:" << deviceManager->Ece << " Epe:" << deviceManager->Epe << " Eppe:" << deviceManager->Eppe;
-		ssPID[2] << "P:" << Kpp * (deviceManager->Ece - deviceManager->Epe) << " I:" << Kpi * deviceManager->Ece << " D:" << Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
+		ssPID[2] << "P:" << (Kpp + deviceManager->Kppitch) * (deviceManager->Ece - deviceManager->Epe) << " I:" << Kpi * deviceManager->Ece << " D:" << Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
 		ssPID[9] << "Kpp:" << Kpp + deviceManager->Kppitch;
-		deviceManager->Mpp = deviceManager->Mp;
 
-		deviceManager->Myd = (Kyp + deviceManager->Kpy) * (deviceManager->Ecx - deviceManager->Epx) + Kyi * deviceManager->Ecx + Kyd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
-		deviceManager->My = deviceManager->Mpy + deviceManager->Myd;
 		ssPID[3] << "My:" << deviceManager->My << "Mpy:" << deviceManager->Mpy << "Myd:" << deviceManager->Myd;
 		ssPID[4] << "Ecx:" << deviceManager->Ecx << " Epx:" << deviceManager->Epx << " Eppx:" << deviceManager->Eppx;
-		ssPID[5] << "P:" << Kyp * (deviceManager->Ecx - deviceManager->Epx) << " I:" << Kyi * deviceManager->Ecx << " D:" << Kyd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
+		ssPID[5] << "P:" << (Kyp + deviceManager->Kpy) * (deviceManager->Ecx - deviceManager->Epx) << " I:" << Kyi * deviceManager->Ecx << " D:" << Kyd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
 		ssPID[10] << "Kpy:" << Kyp + deviceManager->Kpy;
-		deviceManager->Mpy = deviceManager->My;
 
-		deviceManager->Mgd = (Kgp + deviceManager->Kpg) * (deviceManager->Ecy - deviceManager->Epy) + Kgi * deviceManager->Ecy + Kgd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
-		deviceManager->Mg = deviceManager->Mpg + deviceManager->Mgd;
 		ssPID[6] << "Mg:" << deviceManager->Mg << "Mpg:" << deviceManager->Mpg << "Mgd:" << deviceManager->Mgd;
 		ssPID[7] << "Ecy:" << deviceManager->Ecy << " Epy:" << deviceManager->Epy << " Eppy:" << deviceManager->Eppy;
-		ssPID[8] << "P:" << Kgp * (deviceManager->Ecy - deviceManager->Epy) << " I:" << Kgi * deviceManager->Ecy << " D:" << Kgd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
+		ssPID[8] << "P:" << (Kgp + deviceManager->Kpg) * (deviceManager->Ecy - deviceManager->Epy) << " I:" << Kgi * deviceManager->Ecy << " D:" << Kgd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
 		ssPID[11] << "Kpg:" << Kgp + deviceManager->Kpg;
-		deviceManager->Mpg = deviceManager->Mg;
 		//imshow("cutImage",cutImage);
 	}else{	//人未検出
 		//ROCFlagはドローンと人の距離が離れた場合にも呼ぶ必要がある
@@ -2876,7 +2867,7 @@ void altitudeControl(BD_MANAGER_t *deviceManager){
 	*/
 	//更新量計算
 	//deviceManager->Mgd = (Kgp + deviceManager->Kpg) * (deviceManager->Ecx - deviceManager->Epx) + Kgi * deviceManager->Ecx + Kgd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
-	deviceManager->Mgd = (Kgp + deviceManager->Kpg) * (deviceManager->Ecx - deviceManager->Epx);
+	deviceManager->Mgd = (Kgp + deviceManager->Kpg) * (deviceManager->Ecy - deviceManager->Epy);
 	//操作量計算
 	deviceManager->Mg = deviceManager->Mpg + deviceManager->Mgd;
 	//操作量送信
