@@ -2237,7 +2237,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		deviceManager->Ese += deviceManager->Ece;	//第一固有値の累計偏差
 
 		deviceManager->currentX = pixToDig(deviceManager->stats[1][CENTER_X]);
-		deviceManager->Ecx = -deviceManager->currentX;
+		deviceManager->Ecx = deviceManager->currentX;
 
 		deviceManager->currentY = deviceManager->stats[1][CENTER_Y];
 		deviceManager->Ecy = 184 - deviceManager->currentY;	//184は画像の中心y座標 他の2つと偏差の計算が逆
@@ -2666,9 +2666,9 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 			//cameraControl(deviceManager,coordDetected);
 			deviceManager->dataPCMD.flag = 1;
 			//directionControl(deviceManager);
-			//distanceControl(deviceManager);
+			distanceControl(deviceManager);
 			//rollControl(deviceManager);
-			altitudeControl(deviceManager);
+			//altitudeControl(deviceManager);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
