@@ -154,7 +154,7 @@ typedef struct
     float pastRoll,pastPixPerHeight,currentRoll,currentPixPerHeight,maxTargetPPH,minTargetPPH;	//pastRollはdegree
     double pastROC,currentROC,differenceROC,firstEV,secondEV,rocArray[6],pastFEV,Ece,Epe,Eppe,Ese,Mpp,Mp,Mpd,
 	currentX,currentY,pastX,pastY,Ecx,Epx,Eppx,Ecy,Epy,Eppy,Mpg,Mg,Mgd,Mpy,My,Myd;
-    double Kppitch,Kpy,Kpg;	//ゲイン手動調節用変数
+    double Kppitch,Kip,Kdp,Kpy,Kiy,Kdy,Kpg,Kig,Kdg;	//ゲイン手動調節用変数
     //pastFEV:1フレーム前の第一固有値 Ece:現在の第一固有値の偏差 Epe:1フレーム前の第一固有値の偏差 Eppe:2フレーム前の第一固有値の偏差 Ese:第一固有値の累計偏差
     //Mp:pitch操作量 Mpd:pitch操作量の差分 Mpp:1フレーム前のpicth操作量
     //currentX:現在の人X座標,currentY:現在の人Y座標,pastX:1フレーム前の人x座標,pastY:1フレーム前の人y座標,Ecx:現在のx座標偏差,Epx:1フレーム前のx座標偏差,Eppx:2フレーム前のx座標偏差,Ecy:現在のy座標偏差,Epy:1フレーム前のy座標偏差,Eppy:2フレーム前のy座標偏差

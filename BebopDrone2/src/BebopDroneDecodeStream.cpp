@@ -100,17 +100,17 @@ std::ofstream rocLog;
 
 #define FRONT_ROC 0.695 //正面向いてる時のROC
 #define SIDE_ROC 0.135 //側面ROC
-#define Kpp 0.0000
+#define Kpp 0.01
 #define Kpi 0.0000
-#define Kpd 0.0000
+#define Kpd 0.6
 
-#define Kyp 0.0000
+#define Kyp 3.0000
 #define Kyi 0.0000
-#define Kyd 0.0000
+#define Kyd 15.0000
 
-#define Kgp 0.0000
+#define Kgp	1.0
 #define Kgi 0.0000
-#define Kgd 0.0000
+#define Kgd 7.0000
 
 enum ContType {
 	CT_yaw,
@@ -641,6 +641,13 @@ int main (int argc, char *argv[])
 		deviceManager->Kpg = 0;
 		deviceManager->Kppitch = 0;
 		deviceManager->Kpy = 0;
+		deviceManager->Kig = 0;
+		deviceManager->Kip = 0;
+		deviceManager->Kiy = 0;
+		deviceManager->Kdg = 0;
+		deviceManager->Kdp = 0;
+		deviceManager->Kdy = 0;
+
 
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0.0;
@@ -2290,18 +2297,18 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		//PID制御実験
 		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp << "Mpd:" << deviceManager->Mpd;
 		ssPID[1] << "Ece:" << deviceManager->Ece << " Epe:" << deviceManager->Epe << " Eppe:" << deviceManager->Eppe;
-		ssPID[2] << "P:" << (Kpp + deviceManager->Kppitch) * (deviceManager->Ece - deviceManager->Epe) << " I:" << Kpi * deviceManager->Ece << " D:" << Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
-		ssPID[9] << "Kpp:" << Kpp + deviceManager->Kppitch;
+		ssPID[2] << "PD:" << (Kpp + deviceManager->Kppitch) * deviceManager->Ece + (Kpd + deviceManager->Kdp) * (deviceManager->Ece - deviceManager->Epe) << " P:" << (Kpp + deviceManager->Kppitch) * deviceManager->Ece << " D:" << (Kpd + deviceManager->Kdp) * (deviceManager->Ece - deviceManager->Epe);
+		ssPID[9] << "Kpd:" << Kpd + deviceManager->Kdp;
 
 		ssPID[3] << "My:" << deviceManager->My << "Mpy:" << deviceManager->Mpy << "Myd:" << deviceManager->Myd;
 		ssPID[4] << "Ecx:" << deviceManager->Ecx << " Epx:" << deviceManager->Epx << " Eppx:" << deviceManager->Eppx;
-		ssPID[5] << "P:" << (Kyp + deviceManager->Kpy) * (deviceManager->Ecx - deviceManager->Epx) << " I:" << Kyi * deviceManager->Ecx << " D:" << Kyd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
-		ssPID[10] << "Kpy:" << Kyp + deviceManager->Kpy;
+		ssPID[5] << "PD:" << (Kyp + deviceManager->Kpy) * deviceManager->Ecx + (Kyd + deviceManager->Kdy) * (deviceManager->Ecx - deviceManager->Epx) << " P:" << Kyp * deviceManager->Ecx << " D:" << Kyd * ((deviceManager->Ecx - deviceManager->Epx));
+		ssPID[10] << "Kyd:" << Kyd + deviceManager->Kdy;
 
 		ssPID[6] << "Mg:" << deviceManager->Mg << "Mpg:" << deviceManager->Mpg << "Mgd:" << deviceManager->Mgd;
 		ssPID[7] << "Ecy:" << deviceManager->Ecy << " Epy:" << deviceManager->Epy << " Eppy:" << deviceManager->Eppy;
-		ssPID[8] << "P:" << (Kgp + deviceManager->Kpg) * (deviceManager->Ecy - deviceManager->Epy) << " I:" << Kgi * deviceManager->Ecy << " D:" << Kgd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
-		ssPID[11] << "Kpg:" << Kgp + deviceManager->Kpg;
+		ssPID[8] << "PD:" << (Kgp + deviceManager->Kpg) * deviceManager->Ecy + (Kgd + deviceManager->Kdg) * (deviceManager->Ecy - deviceManager->Epy) << " P:" << Kgp * deviceManager->Ecy << " D:" << Kgd * (deviceManager->Ecy - deviceManager->Epy);
+		ssPID[11] << "Kdg:" << Kgd + deviceManager->Kdg;
 		//imshow("cutImage",cutImage);
 	}else{	//人未検出
 		//ROCFlagはドローンと人の距離が離れた場合にも呼ぶ必要がある
@@ -2349,9 +2356,9 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPID[6] << "Mg:" << 0 << "Mpg:" << 0 << "Mgd:" << 0;
 		ssPID[7] << "Ecy:" << 0 << " Epy:" << 0 << " Eppy:" << 0;
 		ssPID[8] << "P:" << 0 << " I:" << 0 << " D:" << 0;
-		ssPID[9] << "Kpp:" << Kpp + deviceManager->Kppitch;
-		ssPID[10] << "Kpy:" << Kyp + deviceManager->Kpy;
-		ssPID[11] << "Kpg:" << Kgp + deviceManager->Kpg;
+		ssPID[9] << "Kpd:" << Kpd + deviceManager->Kdp;
+		ssPID[10] << "Kyd:" << Kyd + deviceManager->Kdy;
+		ssPID[11] << "Kdg:" << Kgd + deviceManager->Kdg;
 
 	}
 	/*for(int i = 0;i < yHeight*yWidth; i++){
@@ -2420,26 +2427,28 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	case 0:
 		//キー↑
 		if(key == 1113938){
-			deviceManager->Kpy = deviceManager->Kpy + 0.01;
+			deviceManager->Kdy = deviceManager->Kdy + 0.01;
 			//キー↓
 		}else if(key == 1113940){
-			deviceManager->Kpy = deviceManager->Kpy - 0.01;
+			deviceManager->Kdy = deviceManager->Kdy - 0.01;
 		}
 		break;
 	//キー1
 	case 1:
 		if(key == 1113938){
-			deviceManager->Kppitch = deviceManager->Kppitch + 0.01;
+			//deviceManager->Kppitch = deviceManager->Kppitch + 0.01;
+			deviceManager->Kdp = deviceManager->Kdp + 0.01;
 		}else if(key == 1113940){
-			deviceManager->Kppitch = deviceManager->Kppitch - 0.01;
+			//deviceManager->Kppitch = deviceManager->Kppitch - 0.01;
+			deviceManager->Kdp = deviceManager->Kdp - 0.01;
 		}
 		break;
 	//キー2
 	case 2:
 		if(key == 1113938){
-			deviceManager->Kpg = deviceManager->Kpg + 0.01;
+			deviceManager->Kdg = deviceManager->Kdg + 0.01;
 		}else if(key == 1113940){
-			deviceManager->Kpg = deviceManager->Kpg - 0.01;
+			deviceManager->Kdg = deviceManager->Kdg - 0.01;
 		}
 		break;
 	default:
@@ -2665,10 +2674,10 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 		if (deviceManager->stats.size() > 1) {
 			//cameraControl(deviceManager,coordDetected);
 			deviceManager->dataPCMD.flag = 1;
-			//directionControl(deviceManager);
+			directionControl(deviceManager);
 			distanceControl(deviceManager);
 			//rollControl(deviceManager);
-			//altitudeControl(deviceManager);
+			altitudeControl(deviceManager);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
@@ -2761,7 +2770,8 @@ void directionControl(BD_MANAGER_t *deviceManager){
 
 	//deviceManager->Myd = (Kyp + deviceManager->Kpy) * (deviceManager->Ecx - deviceManager->Epx) + Kyi * deviceManager->Ecy + Kyd * ((deviceManager->Ecy - deviceManager->Epy) - (deviceManager->Epy - deviceManager->Eppy));
 	deviceManager->Myd = (Kyp + deviceManager->Kpy) * (deviceManager->Ecx - deviceManager->Epx);
-	deviceManager->My = deviceManager->Mpy + deviceManager->Myd;
+	//deviceManager->My = deviceManager->Mpy + deviceManager->Myd;
+	deviceManager->My = (Kyp + deviceManager->Kpy) * deviceManager->Ecx + (Kyd + deviceManager->Kdy) * (deviceManager->Ecx - deviceManager->Epx);
 	deviceManager->dataPCMD.yaw = deviceManager->My;
 	deviceManager->Mpy = deviceManager->My;
 
@@ -2791,7 +2801,8 @@ void distanceControl(BD_MANAGER_t *deviceManager){
 	*/
 	//deviceManager->Mpd = (Kpp + deviceManager->Kppitch) * (deviceManager->Ece - deviceManager->Epe) + Kpi * deviceManager->Ece + Kpd * ((deviceManager->Ece - deviceManager->Epe) - (deviceManager->Epe - deviceManager->Eppe));
 	deviceManager->Mpd = (Kpp + deviceManager->Kppitch) * (deviceManager->Ece - deviceManager->Epe);
-	deviceManager->Mp = deviceManager->Mpp + deviceManager->Mpd;
+	//deviceManager->Mp = deviceManager->Mpp + deviceManager->Mpd;
+	deviceManager->Mp = (Kpp + deviceManager->Kppitch) * deviceManager->Ece + (Kpd + deviceManager->Kdp) * (deviceManager->Ece - deviceManager->Epe);
 	deviceManager->dataPCMD.pitch = deviceManager->Mp;
 	deviceManager->Mpp = deviceManager->Mp;
 
@@ -2865,15 +2876,18 @@ void altitudeControl(BD_MANAGER_t *deviceManager){
 		deviceManager->dataPCMD.gaz = 0;
 	}
 	*/
+
 	//更新量計算
 	//deviceManager->Mgd = (Kgp + deviceManager->Kpg) * (deviceManager->Ecx - deviceManager->Epx) + Kgi * deviceManager->Ecx + Kgd * ((deviceManager->Ecx - deviceManager->Epx) - (deviceManager->Epx - deviceManager->Eppx));
 	deviceManager->Mgd = (Kgp + deviceManager->Kpg) * (deviceManager->Ecy - deviceManager->Epy);
 	//操作量計算
-	deviceManager->Mg = deviceManager->Mpg + deviceManager->Mgd;
+	//差分ではなく直接計算する
+	deviceManager->Mg = (Kgp + deviceManager->Kpg) * deviceManager->Ecy + (Kgd + deviceManager->Kdg) * (deviceManager->Ecy - deviceManager->Epy);
 	//操作量送信
 	deviceManager->dataPCMD.gaz = deviceManager->Mg;
 	//1フレーム前の操作量に現在の操作量を代入
 	deviceManager->Mpg = deviceManager->Mg;
+
 
 }
 //中心から何度ずれているのか求める
