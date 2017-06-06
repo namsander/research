@@ -2248,21 +2248,18 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 
 		deviceManager->currentY = deviceManager->stats[1][CENTER_Y];
 		deviceManager->Ecy = 184 - deviceManager->currentY;	//184は画像の中心y座標 他の2つと偏差の計算が逆
-
+		deviceManager->differenceROC = 0;	//differenceROCリセット
 		//過去にrocとったなら
 		if(deviceManager->ROCFlag){
-			deviceManager->rocCount = deviceManager->rocCount % 5;
+			deviceManager->rocCount = deviceManager->rocCount % 6;
 			deviceManager->pastROC = deviceManager->currentROC;
 			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
 
 			//ROCの変化量を計算して代入
 			deviceManager->rocArray[deviceManager->rocCount] = deviceManager->currentROC - deviceManager->pastROC;
-			//differenceROCの絶対値が0.1以下->誤差の範疇で人は動いていない
-			if(fabs(deviceManager->rocArray[deviceManager->rocCount]) <= 0.01){
-				//差はないことにする
-				deviceManager->rocArray[deviceManager->rocCount] = 0.0;
-				//差が正(ROC増加)
-			}else if(deviceManager->differenceROC > 0){
+
+			//ROCの変化量が正なら1負なら-1
+			if((deviceManager->currentROC - deviceManager->pastROC) > 0){
 				deviceManager->rocArray[deviceManager->rocCount] = 1.0;
 				//差が負(ROC減少)
 			}else{
@@ -2291,8 +2288,8 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[1] << "ROC:" << deviceManager->currentROC;
 		ssPrint[2] << "eigenVecX:" << pca.eigenvectors.at<double>(0,1) << " eigenVecY:" << pca.eigenvectors.at<double>(0,0);
 		ssPrint[3] << "eigenValue1:" << pca.eigenvalues.at<double>(0) << " eigenValue2:" << pca.eigenvalues.at<double>(1);
-		ssPrint[4] << "differenceOfROC:" << deviceManager->differenceROC;
-		ssPrint[5] << "height:" << deviceManager->stats[1][CC_STAT_HEIGHT] << "width:" << deviceManager->stats[1][CC_STAT_WIDTH];
+		ssPrint[4] << "differenceOfROC:" << deviceManager->currentROC - deviceManager->pastROC;
+		ssPrint[5] << "difference:"  << deviceManager->differenceROC;
 
 		//PID制御実験
 		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp << "Mpd:" << deviceManager->Mpd;
@@ -2815,16 +2812,20 @@ void rollControl(BD_MANAGER_t *deviceManager){
 	//ここのroll値はすべて最大角の割合
 	//800は仮　十分に近づいているか？
 	if (deviceManager->firstEV > 180 && deviceManager->firstEV < 2200) {
+
+		//顔検出判定
 		if (deviceManager->faceRectDetected.size() != 0) {
 			deviceManager->findFace = 1;
 		} else {
 			deviceManager->findFace = 0;
 		}
+
 		deviceManager->rollControllFlag = true;
+
 		//直前フレームの角度やピクセル情報を保持しているかチェック　していなければ代入
 		if (deviceManager->rollFlag == 0) {
 			//currentRollはrollの割合
-			deviceManager->currentRoll = 10;
+			deviceManager->currentRoll = 3;
 			deviceManager->dataPCMD.roll = deviceManager->currentRoll;	//とりあえず右に35*0.1度傾ける
 			deviceManager->pastRoll = deviceManager->currentRoll;
 			deviceManager->rollFlag = 1;
