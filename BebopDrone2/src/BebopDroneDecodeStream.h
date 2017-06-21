@@ -147,13 +147,16 @@ typedef struct
     int cameraCount;
     int time;	//グラフ描画用に仮追加
     int plotType; //プロットする情報を選択するための番号
+    int isGetDifference;
+    int isNegative; //反転用カウント変数
+    int isStop; //静止判定フラグ
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
     double altitude;
     float pastRoll,pastPixPerHeight,currentRoll,currentPixPerHeight,maxTargetPPH,minTargetPPH;	//pastRollはdegree
-    double pastROC,currentROC,differenceROC,firstEV,secondEV,rocArray[6],pastFEV,Ece,Epe,Eppe,Ese,Mpp,Mp,Mpd,
-	currentX,currentY,pastX,pastY,Ecx,Epx,Eppx,Ecy,Epy,Eppy,Mpg,Mg,Mgd,Mpy,My,Myd;
+    double pastROC,currentROC,differenceROC,pastDifferenceROC,firstEV,secondEV,rocArray[6],pastFEV,Ece,Epe,Eppe,Ese,Mpp,Mp,Mpd,
+	currentX,currentY,pastX,pastY,Ecx,Epx,Eppx,Ecy,Epy,Eppy,Mpg,Mg,Mgd,Mpy,My,Myd,Epr,Ecr;
     double Kppitch,Kip,Kdp,Kpy,Kiy,Kdy,Kpg,Kig,Kdg;	//ゲイン手動調節用変数
     //pastFEV:1フレーム前の第一固有値 Ece:現在の第一固有値の偏差 Epe:1フレーム前の第一固有値の偏差 Eppe:2フレーム前の第一固有値の偏差 Ese:第一固有値の累計偏差
     //Mp:pitch操作量 Mpd:pitch操作量の差分 Mpp:1フレーム前のpicth操作量

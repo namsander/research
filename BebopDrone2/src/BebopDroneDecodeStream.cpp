@@ -112,6 +112,11 @@ std::ofstream rocLog;
 #define Kgi 0.0000
 #define Kgd 7.0000
 
+#define Krp 25
+
+#define Kri 80
+#define ROLL_COUNT 5
+
 enum ContType {
 	CT_yaw,
 	CT_pitch,
@@ -609,6 +614,7 @@ int main (int argc, char *argv[])
 		deviceManager->contVariable = vector<vector<double> >(3,vector<double>(300,0));	//4行300列の2次元vector初期化
 		deviceManager->ROCFlag = false;
 		deviceManager->differenceROC = 0.0;
+		deviceManager->pastDifferenceROC = 0.0;
 		deviceManager->firstEV = 0.0;
 		deviceManager->secondEV = 0.0;
 		deviceManager->rollControllFlag = false;
@@ -647,6 +653,11 @@ int main (int argc, char *argv[])
 		deviceManager->Kdg = 0;
 		deviceManager->Kdp = 0;
 		deviceManager->Kdy = 0;
+		deviceManager->isGetDifference = 0;
+		deviceManager->isNegative = 0;
+		deviceManager->Ecr = 0.0;
+		deviceManager->Epr = 0.0;
+		deviceManager->isStop = 0;
 
 
 		for(int i = 0;i < 6;i++){
@@ -1888,6 +1899,7 @@ void onInputEvent(eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat inf
 	if (autoFlag == 1) {
 		autonomousFlying(event, deviceManager,infoWindow);
 	} else {
+		deviceManager->currentRoll = 0;
 		putText(infoWindow,"controlled flying",Point(184,320),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 		putText(infoWindow,pitch.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 		switch (event) {
@@ -2145,7 +2157,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	Mat dst(height,width,CV_8UC3,Scalar(0));
 	Mat output(height,width,CV_16UC1,Scalar(0));
 	vector<Mat> splitYUV(3);
-	stringstream ssPrint[7];
+	stringstream ssPrint[12];
 	stringstream ssPID[12];
 	vector<vector<int> > stats;
 	vector<vector<double> > centroids;
@@ -2248,16 +2260,16 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 
 		deviceManager->currentY = deviceManager->stats[1][CENTER_Y];
 		deviceManager->Ecy = 184 - deviceManager->currentY;	//184は画像の中心y座標 他の2つと偏差の計算が逆
-		deviceManager->differenceROC = 0;	//differenceROCリセット
+		//deviceManager->differenceROC = 0;	//differenceROCリセット
 		//過去にrocとったなら
 		if(deviceManager->ROCFlag){
 			deviceManager->rocCount = deviceManager->rocCount % 6;
-			deviceManager->pastROC = deviceManager->currentROC;
+			//deviceManager->pastROC = deviceManager->currentROC;
 			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
 
 			//ROCの変化量を計算して代入
 			deviceManager->rocArray[deviceManager->rocCount] = deviceManager->currentROC - deviceManager->pastROC;
-
+			/*
 			//ROCの変化量が正なら1負なら-1
 			if((deviceManager->currentROC - deviceManager->pastROC) > 0){
 				deviceManager->rocArray[deviceManager->rocCount] = 1.0;
@@ -2265,6 +2277,10 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 			}else{
 				deviceManager->rocArray[deviceManager->rocCount] = -1.0;
 			}
+			*/
+			//ここからrollControlに移動した
+
+			/*
 			//difference集計
 			for(int i = 0;i < 6;i++){
 				deviceManager->differenceROC += deviceManager->rocArray[i];
@@ -2277,6 +2293,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 			}else{
 				deviceManager->differenceROC = 0.0;
 			}
+			*/
 
 			deviceManager->rocCount++;
 			//とっていないなら
@@ -2290,6 +2307,13 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[3] << "eigenValue1:" << pca.eigenvalues.at<double>(0) << " eigenValue2:" << pca.eigenvalues.at<double>(1);
 		ssPrint[4] << "differenceOfROC:" << deviceManager->currentROC - deviceManager->pastROC;
 		ssPrint[5] << "difference:"  << deviceManager->differenceROC;
+		ssPrint[6] << "isNegative:"  << deviceManager->isNegative;
+		ssPrint[7] << "yaw:"  << deviceManager->dataPCMD.yaw;
+		ssPrint[8] << "pitch:"  << deviceManager->dataPCMD.pitch;
+		ssPrint[9] << "roll:"  << deviceManager->dataPCMD.roll;
+		ssPrint[10] << "gaz:"  << deviceManager->dataPCMD.gaz;
+		ssPrint[11] << "currentRoll:"  << deviceManager->currentRoll;
+
 
 		//PID制御実験
 		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp << "Mpd:" << deviceManager->Mpd;
@@ -2335,6 +2359,8 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		deviceManager->Mg = 0.0;
 		deviceManager->Mpg = 0.0;
 		deviceManager->Mgd = 0.0;
+
+		deviceManager->isNegative = 0;
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0;
 		}
@@ -2344,6 +2370,12 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[3] << "eigenValue1:" << 0 << " eigenValue2:" << 0;
 		ssPrint[4] << "differenceOfROC:" << 0;
 		ssPrint[5] << "height:" << 0 << "width:" << 0;
+		ssPrint[6] << "isNegative:"  << 0;
+		ssPrint[7] << "yaw:"  << 0;
+		ssPrint[8] << "pitch:"  << 0;
+		ssPrint[9] << "roll:"  << 0;
+		ssPrint[10] << "gaz:"  << 0;
+		ssPrint[11] << "currentRoll:"  << 0;
 		ssPID[0] << "Mp:" << 0 << "Mpp:" << 0 << "Mpd:" << 0;
 		ssPID[1] << "Ece:" << 0 << " Epe:" << 0 << " Eppe:" << 0;
 		ssPID[2] << "P:" << 0 << " I:" << 0 << " D:" << 0;
@@ -2378,7 +2410,14 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	putText(print,ssPrint[3].str(),Point(0,70),0,0.5,Scalar(255,255,255));
 	putText(print,ssPrint[4].str(),Point(0,90),0,0.5,Scalar(255,255,255));
 	putText(print,ssPrint[5].str(),Point(0,110),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[6].str(),Point(0,130),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[7].str(),Point(0,150),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[8].str(),Point(0,170),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[9].str(),Point(0,190),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[10].str(),Point(0,210),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[11].str(),Point(0,230),0,0.5,Scalar(255,255,255));
 
+	/*
 	//表示部
 	for(int i = 0,j = 0;i < 12,j <= 300;i++,j+=20){
 		if(i % 3 == 0){
@@ -2389,6 +2428,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		putText(print,ssPID[i].str(),Point(0,printNum),0,0.5,Scalar(255,255,255));
 	}
 	printNum = 0;
+	*/
 	//deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
 	imshow("binary",binary);
 	imshow("frame",print);
@@ -2673,8 +2713,8 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 			deviceManager->dataPCMD.flag = 1;
 			directionControl(deviceManager);
 			distanceControl(deviceManager);
-			//rollControl(deviceManager);
 			altitudeControl(deviceManager);
+			rollControl(deviceManager);
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 //				}else if(coordDetected[0].x < 300){
@@ -2697,6 +2737,7 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 			deviceManager->dataPCMD.gaz = 0;
 			deviceManager->dataCam.pan = 0;
 			deviceManager->dataCam.tilt = 0;
+			deviceManager->currentRoll = 0;
 		    print[0] << "pitch:" << deviceManager->dataPCMD.pitch << "yaw:" << deviceManager->dataPCMD.yaw;
       		print[1] << "gaz:" << 0;
       		print[2] << "roll:" << 0;
@@ -2716,6 +2757,7 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 		deviceManager->dataPCMD.gaz = 0;
 		deviceManager->dataCam.pan = 0;
 		deviceManager->dataCam.tilt = 0;
+		deviceManager->currentRoll = 0;
 	}
 	//保険のために動かないようにする　動かすときは消す
 	/*
@@ -2805,12 +2847,13 @@ void distanceControl(BD_MANAGER_t *deviceManager){
 
 }
 
-void rollControl(BD_MANAGER_t *deviceManager){
+void rollControl(BD_MANAGER_t *deviceManager) {
 	//この関数はpixelサイズが一定以上の時呼ばれる
 	//第一主成分が一定以上の時
 	//まず顔が検出できているかできていないかを判断する
 	//ここのroll値はすべて最大角の割合
 	//800は仮　十分に近づいているか？
+
 	if (deviceManager->firstEV > 180 && deviceManager->firstEV < 2200) {
 
 		//顔検出判定
@@ -2824,28 +2867,86 @@ void rollControl(BD_MANAGER_t *deviceManager){
 
 		//直前フレームの角度やピクセル情報を保持しているかチェック　していなければ代入
 		if (deviceManager->rollFlag == 0) {
+
+			deviceManager->Ecr = abs(0.44 - deviceManager->currentROC);
+			deviceManager->Epr = deviceManager->Ecr;
 			//currentRollはrollの割合
-			deviceManager->currentRoll = 3;
-			deviceManager->dataPCMD.roll = deviceManager->currentRoll;	//とりあえず右に35*0.1度傾ける
+			//たまに0.44を超えるので絶対値を取る
+			deviceManager->currentRoll = deviceManager->Ecr * Krp;
+
+			deviceManager->dataPCMD.roll = deviceManager->currentRoll;//とりあえず右に傾ける
 			deviceManager->pastRoll = deviceManager->currentRoll;
 			deviceManager->rollFlag = 1;
 			return;
 		} else {	//直前の情報を保持していたら
-			//rocが減少していればdifferenceROCは-1なので-pastRoll(反転)増加していれば向き変わらず,変化なければdifferenceROC=0なのでroll=0;
-			//一度0になると永遠に0のまま
-			//doubleからfloatにしてるのが怖い
-			//とりあえずROC-なら逆に、それ以外なら直前のroll角度と同じ方向に傾けることにする
-			if(deviceManager->differenceROC < 0.0){
-				deviceManager->currentRoll = deviceManager->pastRoll * (float)deviceManager->differenceROC;
-				deviceManager->dataPCMD.roll = deviceManager->currentRoll;
-			}else{
-				deviceManager->currentRoll = deviceManager->pastRoll;
-				deviceManager->dataPCMD.roll = deviceManager->currentRoll;
+
+			//基本differenceは1
+			deviceManager->Ecr = abs(0.44 - deviceManager->currentROC);
+			deviceManager->differenceROC = 1.0;
+
+			//前のフレームで静止していた場合
+			if (deviceManager->isStop == 1) {
+				deviceManager->isStop = 0;
+				//前のフレームのrollを実行
+				deviceManager->dataPCMD.roll = deviceManager->pastRoll;
+			} else {
+				//6フレームに一度向き判定
+				if (deviceManager->isGetDifference == 0) {
+					//差分負状態が5回(1秒)連続したら反転
+					if (deviceManager->currentROC - deviceManager->pastROC
+							<= 0) {
+						//負カウント
+						deviceManager->isNegative++;
+						if (deviceManager->isNegative >= ROLL_COUNT) {
+							deviceManager->isNegative = 0;
+							//反転
+							deviceManager->differenceROC = -1.0;
+							//静止フラグオン
+							deviceManager->isStop = 1;
+						}
+					} else {
+						if (deviceManager->isNegative > 0) {
+							//正カウント
+							deviceManager->isNegative--;
+						}
+					}
+					deviceManager->pastROC = deviceManager->currentROC;
+				}
+				deviceManager->isGetDifference++;
+				deviceManager->isGetDifference = deviceManager->isGetDifference
+						% 6;
+
+				//前フレームの符号だけを取り出すために絶対値を取る
+				//符号決定
+				deviceManager->currentRoll = deviceManager->pastRoll
+						/ abs(deviceManager->pastRoll)
+						* (float) deviceManager->differenceROC;
+				//値決定
+				deviceManager->currentRoll = deviceManager->currentRoll
+						* deviceManager->Ecr * Krp;
+
+				if (deviceManager->isStop == 0) {
+
+					//値送信
+					deviceManager->dataPCMD.roll = deviceManager->currentRoll;
+
+				} else {
+					//その場で静止させる
+					deviceManager->dataPCMD.flag = 0;
+					deviceManager->dataPCMD.roll = 0;
+					deviceManager->dataPCMD.pitch = 0;
+					deviceManager->dataPCMD.yaw = 0;
+					deviceManager->dataPCMD.gaz = 0;
+				}
+
+				//引き継ぎ
+				deviceManager->pastRoll = deviceManager->currentRoll;
+				deviceManager->Epr = deviceManager->Ecr;
 			}
-			//currentRollはもう使っていないから別のものをpastRollに入れなければならない
-			deviceManager->pastRoll = deviceManager->currentRoll;
+
 		}
-	}else{
+
+	} else {
 		//rollをリセットするかしないか
 		//rollFlagをリセットするかしないか
 		deviceManager->rollControllFlag = false;
@@ -2884,6 +2985,10 @@ void altitudeControl(BD_MANAGER_t *deviceManager){
 	//操作量計算
 	//差分ではなく直接計算する
 	deviceManager->Mg = (Kgp + deviceManager->Kpg) * deviceManager->Ecy + (Kgd + deviceManager->Kdg) * (deviceManager->Ecy - deviceManager->Epy);
+	//130超えると制御できなくなるので100で留めるストッパー
+	if(deviceManager->Mg > 100){
+		deviceManager->Mg = 100;
+	}
 	//操作量送信
 	deviceManager->dataPCMD.gaz = deviceManager->Mg;
 	//1フレーム前の操作量に現在の操作量を代入
