@@ -150,11 +150,12 @@ typedef struct
     int isGetDifference;
     int isNegative; //反転用カウント変数
     int isStop; //静止判定フラグ
+    int isFront; //正面判定フラグ
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
     double altitude;
-    float pastRoll,pastPixPerHeight,currentRoll,currentPixPerHeight,maxTargetPPH,minTargetPPH;	//pastRollはdegree
+    float pastRoll,pastPixPerHeight,currentRoll,currentPixPerHeight,maxTargetPPH,minTargetPPH,rollSeved;	//pastRollはdegree
     double pastROC,currentROC,differenceROC,pastDifferenceROC,firstEV,secondEV,rocArray[6],pastFEV,Ece,Epe,Eppe,Ese,Mpp,Mp,Mpd,
 	currentX,currentY,pastX,pastY,Ecx,Epx,Eppx,Ecy,Epy,Eppy,Mpg,Mg,Mgd,Mpy,My,Myd,Epr,Ecr;
     double Kppitch,Kip,Kdp,Kpy,Kiy,Kdy,Kpg,Kig,Kdg;	//ゲイン手動調節用変数
