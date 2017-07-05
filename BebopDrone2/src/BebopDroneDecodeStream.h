@@ -151,6 +151,7 @@ typedef struct
     int isNegative; //反転用カウント変数
     int isStop; //静止判定フラグ
     int isFront; //正面判定フラグ
+    int numOfFace;
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;

@@ -98,7 +98,7 @@ std::ofstream rocLog;
 #define ERROR_STR_LENGTH 2048
 
 
-#define FRONT_ROC 0.41 //正面向いてる時のROC
+#define FRONT_ROC 0.35 //正面向いてる時のROC
 #define SIDE_ROC 0.135 //側面ROC
 #define Kpp 0.01
 #define Kpi 0.0000
@@ -428,8 +428,9 @@ void* Decode_RunDataThread(void *customData)
 
 				if (decodedOut != NULL) {
 					fwrite(decodedOut, pic_size, 1, deviceManager->video_out);
-//					if (deviceManager->imageFlag == 3) {
-//						deviceManager->imageFlag = deviceManager->imageFlag % 3;
+
+//					if (deviceManager->imageFlag == 2) {
+//						deviceManager->imageFlag = deviceManager->imageFlag % 2;
 //						imageProc2(decodedOut, hog, deviceManager);
 //					} else {
 //						deviceManager->imageFlag++;
@@ -661,6 +662,7 @@ int main (int argc, char *argv[])
 		deviceManager->isStop = 0;
 		deviceManager->isFront = 0;
 		deviceManager->rollSeved = 0;
+		deviceManager->numOfFace = 0;
 
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0.0;
@@ -1901,7 +1903,7 @@ void onInputEvent(eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat inf
 	if (autoFlag == 1) {
 		autonomousFlying(event, deviceManager,infoWindow);
 	} else {
-		if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10 && abs(deviceManager->Ecy) < 30	&& abs(deviceManager->Ecr) < 0.01) {
+		if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10 && abs(deviceManager->Ecy) < 30	&& abs(deviceManager->Ecr) < 0.01 && deviceManager->numOfFace != 0) {
 			deviceManager->isFront = 1;
 		}else{
 			deviceManager->isFront = 0;
@@ -2160,12 +2162,14 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	Mat channels[3];
 	Mat labelImg;
 	Mat blur;
+	Mat gray;
 	Mat cutImage;
+	Mat cutFace;
 	Mat coordinate;
 	Mat dst(height,width,CV_8UC3,Scalar(0));
 	Mat output(height,width,CV_16UC1,Scalar(0));
 	vector<Mat> splitYUV(3);
-	stringstream ssPrint[16];
+	stringstream ssPrint[17];
 	stringstream ssPID[12];
 	vector<vector<int> > stats;
 	vector<vector<double> > centroids;
@@ -2174,6 +2178,8 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	int count = 0;
 	int coordinateNum = 0;
 	int key = 0;
+	stringstream ssFaceRectSize;
+
 	deviceManager->cameraCount++;
 	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB); //yuvをbgrに変換
 	if(deviceManager->cameraCount == 150){
@@ -2181,6 +2187,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	}
 
 	bilateralFilter(bgrImage,blur,-1,50,2);	//2が正常に作動するギリギリ
+	cvtColor(blur,gray,CV_BGR2GRAY);	//gray画像作成
 	//medianBlur(bgrImage,blur,3);
 	cvtColor(blur,hsvImage,CV_BGR2HSV); //bgrをhsvに変換
 	//split(hsvImage,channels);
@@ -2201,6 +2208,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		imwrite("label.jpg",dst);
 		deviceManager->cameraCount = 0;
 	}*/
+
     //binary画像のregion部分切り出し
 	if (deviceManager->stats.size() > 1) {
 		//regionのピクセル数分coordinate確保
@@ -2210,6 +2218,60 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 						deviceManager->stats[1][CC_STAT_TOP],
 						deviceManager->stats[1][CC_STAT_WIDTH],
 						deviceManager->stats[1][CC_STAT_HEIGHT])).clone();
+		//顔画像切り出し.TOP - HEIGHT /2 がマイナスにならないようにしている
+		if(deviceManager->stats[1][CC_STAT_TOP] - deviceManager->stats[1][CC_STAT_HEIGHT] / 2 <= 0){
+			cutFace = Mat(gray,
+				Rect(deviceManager->stats[1][CC_STAT_LEFT],
+						0,
+						deviceManager->stats[1][CC_STAT_WIDTH],
+						deviceManager->stats[1][CC_STAT_HEIGHT] / 2)).clone();
+
+
+		}else{
+			cutFace = Mat(gray,
+				Rect(deviceManager->stats[1][CC_STAT_LEFT],
+						deviceManager->stats[1][CC_STAT_TOP]
+								- deviceManager->stats[1][CC_STAT_HEIGHT] / 2,
+						deviceManager->stats[1][CC_STAT_WIDTH],
+						deviceManager->stats[1][CC_STAT_HEIGHT] / 2)).clone();
+
+
+		}
+
+		//顔検出
+		deviceManager->faceCascade.detectMultiScale(cutFace,deviceManager->faceRectDetected,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));	//顔検出
+		deviceManager->numOfFace = deviceManager->faceRectDetected.size();
+
+		//検出された矩形データの表示*3
+		if (deviceManager->numOfFace != 0) {
+			ssFaceRectSize << "X:" << deviceManager->faceRectDetected[0].width
+					<< "Y:" << deviceManager->faceRectDetected[0].height;
+			putText(cutFace, ssFaceRectSize.str(),
+					Point((deviceManager->faceRectDetected[0].x) - 20,
+							(deviceManager->faceRectDetected[0].y) - 20), 0,
+					0.5, Scalar(255, 255, 255));
+			for (int i = 0; i < deviceManager->numOfFace; i++) {
+				rectangle(cutFace,
+						Point(deviceManager->faceRectDetected[i].x,
+								deviceManager->faceRectDetected[i].y),
+						Point(
+								deviceManager->faceRectDetected[i].x
+										+ deviceManager->faceRectDetected[i].width,
+								deviceManager->faceRectDetected[i].y
+										+ deviceManager->faceRectDetected[i].height),
+						255, 5);
+				circle(cutFace,
+						Point(
+								deviceManager->faceRectDetected[i].x
+										+ deviceManager->faceRectDetected[i].width
+												/ 2,
+								deviceManager->faceRectDetected[i].y
+										+ deviceManager->faceRectDetected[i].height
+												/ 2), 3, Scalar(255, 255, 255),
+						-1);
+
+			}
+		}
 		for (int i = 0; i < deviceManager->stats[1][CC_STAT_HEIGHT]; i++) {
 			int *cutImageP = cutImage.ptr<int>(i);
 			for (int j = 0; j < deviceManager->stats[1][CC_STAT_WIDTH]; j++) {
@@ -2331,6 +2393,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[13] << "speedY:" << deviceManager->speedY;
 		ssPrint[14] << "speedZ:" << deviceManager->speedZ;
 		ssPrint[15] << "isFront:" << deviceManager->isFront;
+		ssPrint[16] << "numOfFace:" << deviceManager->numOfFace;
 
 
 		//PID制御実験
@@ -2382,6 +2445,9 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 
 		deviceManager->Ecr = 0;
 		deviceManager->Epr = 0;
+
+		deviceManager->isFront = 0;
+
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0;
 		}
@@ -2400,7 +2466,8 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[12] << "speedX:" << 0;
 		ssPrint[13] << "speedY:" << 0;
 		ssPrint[14] << "speedZ:" << 0;
-		ssPrint[15] << "isFront:" << 0;
+		ssPrint[15] << "isFront:" << deviceManager->isFront;
+		ssPrint[16] << "numOfFace:" << deviceManager->numOfFace;
 		ssPID[0] << "Mp:" << 0 << "Mpp:" << 0 << "Mpd:" << 0;
 		ssPID[1] << "Ece:" << 0 << " Epe:" << 0 << " Eppe:" << 0;
 		ssPID[2] << "P:" << 0 << " I:" << 0 << " D:" << 0;
@@ -2445,6 +2512,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	putText(print,ssPrint[13].str(),Point(0,270),0,0.5,Scalar(255,255,255));
 	putText(print,ssPrint[14].str(),Point(0,290),0,0.5,Scalar(255,255,255));
 	putText(print,ssPrint[15].str(),Point(0,310),0,0.5,Scalar(255,255,255));
+	putText(print,ssPrint[16].str(),Point(0,330),0,0.5,Scalar(255,255,255));
 
 
 	/*
@@ -2462,9 +2530,11 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	//deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
 	imshow("binary",binary);
 	imshow("frame",print);
+	imshow("face",cutFace);
 	//imshow("bgrImage",bgrImage);
 	//imshow("blur",blur);
 	imshow("label",dst);
+	//imshow("gray",gray);
 	//imshow("hsvImage",hsvImage);
 	//imshow("h",channels[0]);
 	//imshow("s",channels[1]);
@@ -2743,7 +2813,7 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 
 			if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10
 					&& abs(deviceManager->Ecy) < 30
-					&& abs(deviceManager->Ecr) < 0.01) {
+					&& abs(deviceManager->Ecr) < 0.01 && deviceManager->numOfFace != 0) {
 
 				deviceManager->isFront = 1;
 				deviceManager->dataPCMD.flag = 0;
@@ -2907,7 +2977,7 @@ void rollControl(BD_MANAGER_t *deviceManager) {
 	if (deviceManager->firstEV > 180 && deviceManager->firstEV < 2200) {
 
 		//顔検出判定
-		if (deviceManager->faceRectDetected.size() != 0) {
+		if (deviceManager->numOfFace != 0) {
 			deviceManager->findFace = 1;
 		} else {
 			deviceManager->findFace = 0;
