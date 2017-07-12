@@ -98,7 +98,7 @@ std::ofstream rocLog;
 #define ERROR_STR_LENGTH 2048
 
 
-#define FRONT_ROC 0.35 //正面向いてる時のROC
+#define FRONT_ROC 0.39 //正面向いてる時のROC
 #define SIDE_ROC 0.135 //側面ROC
 #define Kpp 0.01
 #define Kpi 0.0000
@@ -663,6 +663,7 @@ int main (int argc, char *argv[])
 		deviceManager->isFront = 0;
 		deviceManager->rollSeved = 0;
 		deviceManager->numOfFace = 0;
+		deviceManager->isTurn = 0;
 
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0.0;
@@ -2210,36 +2211,46 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	}*/
 
     //binary画像のregion部分切り出し
+    //人検出時
 	if (deviceManager->stats.size() > 1) {
 		//regionのピクセル数分coordinate確保
-		coordinate = Mat(deviceManager->stats[1][CC_STAT_AREA],2,CV_64F);
+		coordinate = Mat(deviceManager->stats[1][CC_STAT_AREA], 2, CV_64F);
 		cutImage = Mat(output,
 				Rect(deviceManager->stats[1][CC_STAT_LEFT],
 						deviceManager->stats[1][CC_STAT_TOP],
 						deviceManager->stats[1][CC_STAT_WIDTH],
 						deviceManager->stats[1][CC_STAT_HEIGHT])).clone();
 		//顔画像切り出し.TOP - HEIGHT /2 がマイナスにならないようにしている
-		if(deviceManager->stats[1][CC_STAT_TOP] - deviceManager->stats[1][CC_STAT_HEIGHT] / 2 <= 0){
-			cutFace = Mat(gray,
-				Rect(deviceManager->stats[1][CC_STAT_LEFT],
-						0,
-						deviceManager->stats[1][CC_STAT_WIDTH],
-						deviceManager->stats[1][CC_STAT_HEIGHT] / 2)).clone();
+		if (deviceManager->stats[1][CC_STAT_HEIGHT] / 2 <= 0
+				|| deviceManager->stats[1][CC_STAT_WIDTH] <= 0) {
+			cutFace = Mat(gray, Rect(0, 0, 30, 30)).clone();
 
+		} else if (deviceManager->stats[1][CC_STAT_TOP]
+				- deviceManager->stats[1][CC_STAT_HEIGHT] / 2 <= 0) {
+			cutFace =
+					Mat(gray,
+							Rect(deviceManager->stats[1][CC_STAT_LEFT], 0,
+									deviceManager->stats[1][CC_STAT_WIDTH],
+									deviceManager->stats[1][CC_STAT_HEIGHT]
+											/ 2)).clone();
 
-		}else{
-			cutFace = Mat(gray,
-				Rect(deviceManager->stats[1][CC_STAT_LEFT],
-						deviceManager->stats[1][CC_STAT_TOP]
-								- deviceManager->stats[1][CC_STAT_HEIGHT] / 2,
-						deviceManager->stats[1][CC_STAT_WIDTH],
-						deviceManager->stats[1][CC_STAT_HEIGHT] / 2)).clone();
-
+		} else {
+			cutFace =
+					Mat(gray,
+							Rect(deviceManager->stats[1][CC_STAT_LEFT],
+									deviceManager->stats[1][CC_STAT_TOP]
+											- deviceManager->stats[1][CC_STAT_HEIGHT]
+													/ 2,
+									deviceManager->stats[1][CC_STAT_WIDTH],
+									deviceManager->stats[1][CC_STAT_HEIGHT]
+											/ 2)).clone();
 
 		}
 
 		//顔検出
-		deviceManager->faceCascade.detectMultiScale(cutFace,deviceManager->faceRectDetected,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));	//顔検出
+		deviceManager->faceCascade.detectMultiScale(cutFace,
+				deviceManager->faceRectDetected, 1.1, 2,
+				0 | CASCADE_SCALE_IMAGE, Size(30, 30));	//顔検出
 		deviceManager->numOfFace = deviceManager->faceRectDetected.size();
 
 		//検出された矩形データの表示*3
@@ -2286,12 +2297,14 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 			}
 		}
 		deviceManager->coordinatenum = coordinateNum;
-		ssPrint[0] << "Area - coordNum:" << deviceManager->stats[1][CC_STAT_AREA] - deviceManager->coordinatenum;
+		ssPrint[0] << "Area - coordNum:"
+				<< deviceManager->stats[1][CC_STAT_AREA]
+						- deviceManager->coordinatenum;
 
 		//主成分分析実行
-		pca(coordinate,Mat(),CV_PCA_DATA_AS_ROW,2);
+		pca(coordinate, Mat(), CV_PCA_DATA_AS_ROW, 2);
 		//過去にrocとったなら
-		if(deviceManager->ROCFlag){
+		if (deviceManager->ROCFlag) {
 			//各データ引き継ぎ部
 			deviceManager->pastFEV = deviceManager->firstEV;
 			deviceManager->Eppe = deviceManager->Epe;
@@ -2307,7 +2320,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 
 			deviceManager->Epr = deviceManager->Ecr;
 
-		}else{
+		} else {
 			//各データリセット部
 			deviceManager->pastFEV = 0.0;
 			deviceManager->Epe = 0.0;
@@ -2338,81 +2351,108 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 
 		//deviceManager->differenceROC = 0;	//differenceROCリセット
 		//過去にrocとったなら
-		if(deviceManager->ROCFlag){
+		if (deviceManager->ROCFlag) {
 			deviceManager->rocCount = deviceManager->rocCount % 6;
 			//deviceManager->pastROC = deviceManager->currentROC;
-			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
+			deviceManager->currentROC = deviceManager->secondEV
+					/ deviceManager->firstEV;
 
 			//ROCの変化量を計算して代入
-			deviceManager->rocArray[deviceManager->rocCount] = deviceManager->currentROC - deviceManager->pastROC;
+			deviceManager->rocArray[deviceManager->rocCount] =
+					deviceManager->currentROC - deviceManager->pastROC;
 			/*
-			//ROCの変化量が正なら1負なら-1
-			if((deviceManager->currentROC - deviceManager->pastROC) > 0){
-				deviceManager->rocArray[deviceManager->rocCount] = 1.0;
-				//差が負(ROC減少)
-			}else{
-				deviceManager->rocArray[deviceManager->rocCount] = -1.0;
-			}
-			*/
+			 //ROCの変化量が正なら1負なら-1
+			 if((deviceManager->currentROC - deviceManager->pastROC) > 0){
+			 deviceManager->rocArray[deviceManager->rocCount] = 1.0;
+			 //差が負(ROC減少)
+			 }else{
+			 deviceManager->rocArray[deviceManager->rocCount] = -1.0;
+			 }
+			 */
 			//ここからrollControlに移動した
-
 			/*
-			//difference集計
-			for(int i = 0;i < 6;i++){
-				deviceManager->differenceROC += deviceManager->rocArray[i];
-			}
-			//difference判定
-			if(deviceManager->differenceROC >= 2){
-				deviceManager->differenceROC = 1.0;
-			}else if(deviceManager->differenceROC <= -2){
-				deviceManager->differenceROC = -1.0;
-			}else{
-				deviceManager->differenceROC = 0.0;
-			}
-			*/
+			 //difference集計
+			 for(int i = 0;i < 6;i++){
+			 deviceManager->differenceROC += deviceManager->rocArray[i];
+			 }
+			 //difference判定
+			 if(deviceManager->differenceROC >= 2){
+			 deviceManager->differenceROC = 1.0;
+			 }else if(deviceManager->differenceROC <= -2){
+			 deviceManager->differenceROC = -1.0;
+			 }else{
+			 deviceManager->differenceROC = 0.0;
+			 }
+			 */
 
 			deviceManager->rocCount++;
 			//とっていないなら
-		}else{
-			deviceManager->currentROC = deviceManager->secondEV / deviceManager->firstEV;
+		} else {
+			deviceManager->currentROC = deviceManager->secondEV
+					/ deviceManager->firstEV;
 			deviceManager->ROCFlag = true;
 		}
 
 		ssPrint[1] << "ROC:" << deviceManager->currentROC;
-		ssPrint[2] << "eigenVecX:" << pca.eigenvectors.at<double>(0,1) << " eigenVecY:" << pca.eigenvectors.at<double>(0,0);
-		ssPrint[3] << "eigenValue1:" << pca.eigenvalues.at<double>(0) << " eigenValue2:" << pca.eigenvalues.at<double>(1);
-		ssPrint[4] << "differenceOfROC:" << deviceManager->currentROC - deviceManager->pastROC;
-		ssPrint[5] << "difference:"  << deviceManager->differenceROC;
-		ssPrint[6] << "isNegative:"  << deviceManager->isNegative;
-		ssPrint[7] << "yaw:"  << deviceManager->dataPCMD.yaw;
-		ssPrint[8] << "pitch:"  << deviceManager->dataPCMD.pitch;
-		ssPrint[9] << "roll:"  << deviceManager->dataPCMD.roll;
-		ssPrint[10] << "gaz:"  << deviceManager->dataPCMD.gaz;
-		ssPrint[11] << "currentRoll:"  << deviceManager->currentRoll;
+		ssPrint[2] << "eigenVecX:" << pca.eigenvectors.at<double>(0, 1)
+				<< " eigenVecY:" << pca.eigenvectors.at<double>(0, 0);
+		ssPrint[3] << "eigenValue1:" << pca.eigenvalues.at<double>(0)
+				<< " eigenValue2:" << pca.eigenvalues.at<double>(1);
+		ssPrint[4] << "differenceOfROC:"
+				<< deviceManager->currentROC - deviceManager->pastROC;
+		ssPrint[5] << "difference:" << deviceManager->differenceROC;
+		ssPrint[6] << "isNegative:" << deviceManager->isNegative;
+		ssPrint[7] << "yaw:" << deviceManager->dataPCMD.yaw;
+		ssPrint[8] << "pitch:" << deviceManager->dataPCMD.pitch;
+		ssPrint[9] << "roll:" << deviceManager->dataPCMD.roll;
+		ssPrint[10] << "gaz:" << deviceManager->dataPCMD.gaz;
+		ssPrint[11] << "currentRoll:" << deviceManager->currentRoll;
 		ssPrint[12] << "speedX:" << deviceManager->speedX;
 		ssPrint[13] << "speedY:" << deviceManager->speedY;
 		ssPrint[14] << "speedZ:" << deviceManager->speedZ;
 		ssPrint[15] << "isFront:" << deviceManager->isFront;
 		ssPrint[16] << "numOfFace:" << deviceManager->numOfFace;
 
-
 		//PID制御実験
-		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp << "Mpd:" << deviceManager->Mpd;
-		ssPID[1] << "Ece:" << deviceManager->Ece << " Epe:" << deviceManager->Epe << " Eppe:" << deviceManager->Eppe;
-		ssPID[2] << "PD:" << (Kpp + deviceManager->Kppitch) * deviceManager->Ece + (Kpd + deviceManager->Kdp) * (deviceManager->Ece - deviceManager->Epe) << " P:" << (Kpp + deviceManager->Kppitch) * deviceManager->Ece << " D:" << (Kpd + deviceManager->Kdp) * (deviceManager->Ece - deviceManager->Epe);
+		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp
+				<< "Mpd:" << deviceManager->Mpd;
+		ssPID[1] << "Ece:" << deviceManager->Ece << " Epe:"
+				<< deviceManager->Epe << " Eppe:" << deviceManager->Eppe;
+		ssPID[2] << "PD:"
+				<< (Kpp + deviceManager->Kppitch) * deviceManager->Ece
+						+ (Kpd + deviceManager->Kdp)
+								* (deviceManager->Ece - deviceManager->Epe)
+				<< " P:" << (Kpp + deviceManager->Kppitch) * deviceManager->Ece
+				<< " D:"
+				<< (Kpd + deviceManager->Kdp)
+						* (deviceManager->Ece - deviceManager->Epe);
 		ssPID[9] << "Kpd:" << Kpd + deviceManager->Kdp;
 
-		ssPID[3] << "My:" << deviceManager->My << "Mpy:" << deviceManager->Mpy << "Myd:" << deviceManager->Myd;
-		ssPID[4] << "Ecx:" << deviceManager->Ecx << " Epx:" << deviceManager->Epx << " Eppx:" << deviceManager->Eppx;
-		ssPID[5] << "PD:" << (Kyp + deviceManager->Kpy) * deviceManager->Ecx + (Kyd + deviceManager->Kdy) * (deviceManager->Ecx - deviceManager->Epx) << " P:" << Kyp * deviceManager->Ecx << " D:" << Kyd * ((deviceManager->Ecx - deviceManager->Epx));
+		ssPID[3] << "My:" << deviceManager->My << "Mpy:" << deviceManager->Mpy
+				<< "Myd:" << deviceManager->Myd;
+		ssPID[4] << "Ecx:" << deviceManager->Ecx << " Epx:"
+				<< deviceManager->Epx << " Eppx:" << deviceManager->Eppx;
+		ssPID[5] << "PD:"
+				<< (Kyp + deviceManager->Kpy) * deviceManager->Ecx
+						+ (Kyd + deviceManager->Kdy)
+								* (deviceManager->Ecx - deviceManager->Epx)
+				<< " P:" << Kyp * deviceManager->Ecx << " D:"
+				<< Kyd * ((deviceManager->Ecx - deviceManager->Epx));
 		ssPID[10] << "Kyd:" << Kyd + deviceManager->Kdy;
 
-		ssPID[6] << "Mg:" << deviceManager->Mg << "Mpg:" << deviceManager->Mpg << "Mgd:" << deviceManager->Mgd;
-		ssPID[7] << "Ecy:" << deviceManager->Ecy << " Epy:" << deviceManager->Epy << " Eppy:" << deviceManager->Eppy;
-		ssPID[8] << "PD:" << (Kgp + deviceManager->Kpg) * deviceManager->Ecy + (Kgd + deviceManager->Kdg) * (deviceManager->Ecy - deviceManager->Epy) << " P:" << Kgp * deviceManager->Ecy << " D:" << Kgd * (deviceManager->Ecy - deviceManager->Epy);
+		ssPID[6] << "Mg:" << deviceManager->Mg << "Mpg:" << deviceManager->Mpg
+				<< "Mgd:" << deviceManager->Mgd;
+		ssPID[7] << "Ecy:" << deviceManager->Ecy << " Epy:"
+				<< deviceManager->Epy << " Eppy:" << deviceManager->Eppy;
+		ssPID[8] << "PD:"
+				<< (Kgp + deviceManager->Kpg) * deviceManager->Ecy
+						+ (Kgd + deviceManager->Kdg)
+								* (deviceManager->Ecy - deviceManager->Epy)
+				<< " P:" << Kgp * deviceManager->Ecy << " D:"
+				<< Kgd * (deviceManager->Ecy - deviceManager->Epy);
 		ssPID[11] << "Kdg:" << Kgd + deviceManager->Kdg;
 		//imshow("cutImage",cutImage);
-	}else{	//人未検出
+	} else {	//人未検出
 		//ROCFlagはドローンと人の距離が離れた場合にも呼ぶ必要がある
 		deviceManager->ROCFlag = false;
 		deviceManager->firstEV = 0.0;
@@ -2448,7 +2488,10 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 
 		deviceManager->isFront = 0;
 
-		for(int i = 0;i < 6;i++){
+		//瞳検出時の顔画像範囲
+		cutFace = Mat(gray,Rect(0,0,30,30)).clone();
+
+		for (int i = 0; i < 6; i++) {
 			deviceManager->rocArray[i] = 0;
 		}
 		ssPrint[0] << "Area - coordNum:" << 0;
@@ -2457,12 +2500,12 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[3] << "eigenValue1:" << 0 << " eigenValue2:" << 0;
 		ssPrint[4] << "differenceOfROC:" << 0;
 		ssPrint[5] << "height:" << 0 << "width:" << 0;
-		ssPrint[6] << "isNegative:"  << 0;
-		ssPrint[7] << "yaw:"  << 0;
-		ssPrint[8] << "pitch:"  << 0;
-		ssPrint[9] << "roll:"  << 0;
-		ssPrint[10] << "gaz:"  << 0;
-		ssPrint[11] << "currentRoll:"  << 0;
+		ssPrint[6] << "isNegative:" << 0;
+		ssPrint[7] << "yaw:" << 0;
+		ssPrint[8] << "pitch:" << 0;
+		ssPrint[9] << "roll:" << 0;
+		ssPrint[10] << "gaz:" << 0;
+		ssPrint[11] << "currentRoll:" << 0;
 		ssPrint[12] << "speedX:" << 0;
 		ssPrint[13] << "speedY:" << 0;
 		ssPrint[14] << "speedZ:" << 0;
@@ -2484,56 +2527,71 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	}
 	/*for(int i = 0;i < yHeight*yWidth; i++){
 
-		if((i%yWidth)+1 > width) continue;
+	 if((i%yWidth)+1 > width) continue;
 
-		yComp.data[index] = frame->componentArray[0].data[i];
-		//uComp.data[index] = frame->componentArray[1].data[i/2];
-		//vComp.data[index] = frame->componentArray[2].data[i/2];
-		index++;
-	}*/
+	 yComp.data[index] = frame->componentArray[0].data[i];
+	 //uComp.data[index] = frame->componentArray[1].data[i/2];
+	 //vComp.data[index] = frame->componentArray[2].data[i/2];
+	 index++;
+	 }*/
 
 	//グラフ描画
-
 	plotGraph(deviceManager);
 
-	putText(print,ssPrint[0].str(),Point(0,10),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[1].str(),Point(0,30),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[2].str(),Point(0,50),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[3].str(),Point(0,70),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[4].str(),Point(0,90),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[5].str(),Point(0,110),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[6].str(),Point(0,130),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[7].str(),Point(0,150),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[8].str(),Point(0,170),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[9].str(),Point(0,190),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[10].str(),Point(0,210),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[11].str(),Point(0,230),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[12].str(),Point(0,250),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[13].str(),Point(0,270),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[14].str(),Point(0,290),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[15].str(),Point(0,310),0,0.5,Scalar(255,255,255));
-	putText(print,ssPrint[16].str(),Point(0,330),0,0.5,Scalar(255,255,255));
-
+	putText(print, ssPrint[0].str(), Point(0, 10), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[1].str(), Point(0, 30), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[2].str(), Point(0, 50), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[3].str(), Point(0, 70), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[4].str(), Point(0, 90), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[5].str(), Point(0, 110), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[6].str(), Point(0, 130), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[7].str(), Point(0, 150), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[8].str(), Point(0, 170), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[9].str(), Point(0, 190), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[10].str(), Point(0, 210), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[11].str(), Point(0, 230), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[12].str(), Point(0, 250), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[13].str(), Point(0, 270), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[14].str(), Point(0, 290), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[15].str(), Point(0, 310), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[16].str(), Point(0, 330), 0, 0.5,
+			Scalar(255, 255, 255));
 
 	/*
-	//表示部
-	for(int i = 0,j = 0;i < 12,j <= 300;i++,j+=20){
-		if(i % 3 == 0){
-			j += 20;
-		}
-		printNum = 130 + j;
+	 //表示部
+	 for(int i = 0,j = 0;i < 12,j <= 300;i++,j+=20){
+	 if(i % 3 == 0){
+	 j += 20;
+	 }
+	 printNum = 130 + j;
 
-		putText(print,ssPID[i].str(),Point(0,printNum),0,0.5,Scalar(255,255,255));
-	}
-	printNum = 0;
-	*/
+	 putText(print,ssPID[i].str(),Point(0,printNum),0,0.5,Scalar(255,255,255));
+	 }
+	 printNum = 0;
+	 */
 	//deviceManager->faceCascade.detectMultiScale(yComp,faces,1.1,2,0|CASCADE_SCALE_IMAGE,Size(30,30));
-	imshow("binary",binary);
-	imshow("frame",print);
-	imshow("face",cutFace);
+	imshow("binary", binary);
+	imshow("frame", print);
+	imshow("face", cutFace);
 	//imshow("bgrImage",bgrImage);
 	//imshow("blur",blur);
-	imshow("label",dst);
+	imshow("label", dst);
 	//imshow("gray",gray);
 	//imshow("hsvImage",hsvImage);
 	//imshow("h",channels[0]);
@@ -2541,16 +2599,16 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	//imshow("v",channels[2]);
 	key = waitKey(1);
 
-	switch(key){
+	switch (key) {
 	//キー1
 	case 1048625:
 		deviceManager->plotType = 0;
 		break;
-	//キー2
+		//キー2
 	case 1048626:
 		deviceManager->plotType = 1;
 		break;
-	//キー3
+		//キー3
 	case 1048627:
 		deviceManager->plotType = 2;
 		break;
@@ -2559,32 +2617,32 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	}
 
 	//ゲイン微調整
-	switch(deviceManager->plotType){
+	switch (deviceManager->plotType) {
 	//キー0
 	case 0:
 		//キー↑
-		if(key == 1113938){
+		if (key == 1113938) {
 			deviceManager->Kdy = deviceManager->Kdy + 0.01;
 			//キー↓
-		}else if(key == 1113940){
+		} else if (key == 1113940) {
 			deviceManager->Kdy = deviceManager->Kdy - 0.01;
 		}
 		break;
-	//キー1
+		//キー1
 	case 1:
-		if(key == 1113938){
+		if (key == 1113938) {
 			//deviceManager->Kppitch = deviceManager->Kppitch + 0.01;
 			deviceManager->Kdp = deviceManager->Kdp + 0.01;
-		}else if(key == 1113940){
+		} else if (key == 1113940) {
 			//deviceManager->Kppitch = deviceManager->Kppitch - 0.01;
 			deviceManager->Kdp = deviceManager->Kdp - 0.01;
 		}
 		break;
-	//キー2
+		//キー2
 	case 2:
-		if(key == 1113938){
+		if (key == 1113938) {
 			deviceManager->Kdg = deviceManager->Kdg + 0.01;
-		}else if(key == 1113940){
+		} else if (key == 1113940) {
 			deviceManager->Kdg = deviceManager->Kdg - 0.01;
 		}
 		break;
@@ -2806,6 +2864,9 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 	default:
 		break;
 	}
+
+	//isTurnを決定する機能を入れる
+
 	if (deviceManager != NULL) {
 
 		if (deviceManager->stats.size() > 1) {
@@ -2833,6 +2894,8 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 				altitudeControl(deviceManager);
 				rollControl(deviceManager);
 			}
+			//維持
+
 
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);

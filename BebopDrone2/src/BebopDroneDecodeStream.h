@@ -152,6 +152,7 @@ typedef struct
     int isStop; //静止判定フラグ
     int isFront; //正面判定フラグ
     int numOfFace;
+    int isTurn;	//0:回り込みなし 1:側面回り込み 2:正面回り込み
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
