@@ -98,8 +98,8 @@ std::ofstream rocLog;
 #define ERROR_STR_LENGTH 2048
 
 
-#define FRONT_ROC 0.39 //正面向いてる時のROC
-#define SIDE_ROC 0.135 //側面ROC
+#define FRONT_ROC 0.41 //正面向いてる時のROC
+#define SIDE_ROC 0.1 //側面ROC
 #define Kpp 0.01
 #define Kpi 0.0000
 #define Kpd 0.6
@@ -664,6 +664,7 @@ int main (int argc, char *argv[])
 		deviceManager->rollSeved = 0;
 		deviceManager->numOfFace = 0;
 		deviceManager->isTurn = 0;
+		deviceManager->faceCount = 150;	//5秒分
 
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0.0;
@@ -1904,12 +1905,13 @@ void onInputEvent(eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat inf
 	if (autoFlag == 1) {
 		autonomousFlying(event, deviceManager,infoWindow);
 	} else {
-		if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10 && abs(deviceManager->Ecy) < 30	&& abs(deviceManager->Ecr) < 0.01 && deviceManager->numOfFace != 0) {
+		if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10 && abs(deviceManager->Ecy) < 30	&& abs(deviceManager->Ecr) < 0.01) {
 			deviceManager->isFront = 1;
 		}else{
 			deviceManager->isFront = 0;
 		}
-
+		deviceManager->faceCount = 150;
+		deviceManager->isTurn = 0;
 		deviceManager->currentRoll = 0;
 		putText(infoWindow,"controlled flying",Point(184,320),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
 		putText(infoWindow,pitch.str(),Point(100,100),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
@@ -2170,7 +2172,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	Mat dst(height,width,CV_8UC3,Scalar(0));
 	Mat output(height,width,CV_16UC1,Scalar(0));
 	vector<Mat> splitYUV(3);
-	stringstream ssPrint[17];
+	stringstream ssPrint[19];
 	stringstream ssPID[12];
 	vector<vector<int> > stats;
 	vector<vector<double> > centroids;
@@ -2412,6 +2414,8 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[14] << "speedZ:" << deviceManager->speedZ;
 		ssPrint[15] << "isFront:" << deviceManager->isFront;
 		ssPrint[16] << "numOfFace:" << deviceManager->numOfFace;
+		ssPrint[17] << "faceCount:" << deviceManager->faceCount;
+		ssPrint[18] << "isTurn:" << deviceManager->isTurn;
 
 		//PID制御実験
 		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp
@@ -2511,6 +2515,8 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[14] << "speedZ:" << 0;
 		ssPrint[15] << "isFront:" << deviceManager->isFront;
 		ssPrint[16] << "numOfFace:" << deviceManager->numOfFace;
+		ssPrint[17] << "faceCount:" << deviceManager->faceCount;
+		ssPrint[18] << "isTurn:" << deviceManager->isTurn;
 		ssPID[0] << "Mp:" << 0 << "Mpp:" << 0 << "Mpd:" << 0;
 		ssPID[1] << "Ece:" << 0 << " Epe:" << 0 << " Eppe:" << 0;
 		ssPID[2] << "P:" << 0 << " I:" << 0 << " D:" << 0;
@@ -2571,6 +2577,10 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	putText(print, ssPrint[15].str(), Point(0, 310), 0, 0.5,
 			Scalar(255, 255, 255));
 	putText(print, ssPrint[16].str(), Point(0, 330), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[17].str(), Point(0, 350), 0, 0.5,
+			Scalar(255, 255, 255));
+	putText(print, ssPrint[18].str(), Point(0, 370), 0, 0.5,
 			Scalar(255, 255, 255));
 
 	/*
@@ -2865,37 +2875,22 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 		break;
 	}
 
-	//isTurnを決定する機能を入れる
 
 	if (deviceManager != NULL) {
 
 		if (deviceManager->stats.size() > 1) {
 			//cameraControl(deviceManager,coordDetected);
 
-			if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10
-					&& abs(deviceManager->Ecy) < 30
-					&& abs(deviceManager->Ecr) < 0.01 && deviceManager->numOfFace != 0) {
+			//isTurnを決定する機能を入れる
+			checkIfTurn(deviceManager);
 
-				deviceManager->isFront = 1;
-				deviceManager->dataPCMD.flag = 0;
-				deviceManager->dataPCMD.roll = 0;
-				deviceManager->dataPCMD.pitch = 0;
-				deviceManager->dataPCMD.yaw = 0;
-				deviceManager->dataPCMD.gaz = 0;
-				deviceManager->dataCam.pan = 0;
-				deviceManager->dataCam.tilt = 0;
-				deviceManager->currentRoll = 0;
-
-			} else {
-				deviceManager->dataPCMD.flag = 1;
-				deviceManager->isFront = 0;
-				directionControl(deviceManager);
-				distanceControl(deviceManager);
-				altitudeControl(deviceManager);
-				rollControl(deviceManager);
+			if(deviceManager->isTurn == 0){
+				keepFront(deviceManager);
+			}else{
+				goToFront(deviceManager);
 			}
-			//維持
 
+			//維持
 
 //				if(coordDetected[0].x > 350){
 //					putText(infoWindow,"30",Point(200,30),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
@@ -3320,4 +3315,84 @@ void exePca(const Mat input,BD_MANAGER_t *deviceManager){
 template<class T>
 bool areaComparator(const vector<T>& a,const vector<T>& b){
 	return a[CC_STAT_AREA] > b[CC_STAT_AREA];
+}
+
+void keepFront(BD_MANAGER_t *deviceManager) {
+
+	if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10
+			&& abs(deviceManager->Ecy) < 30 && abs(deviceManager->Ecr) < 0.01
+			) {
+
+		deviceManager->isFront = 1;
+		deviceManager->dataPCMD.flag = 0;
+		deviceManager->dataPCMD.roll = 0;
+		deviceManager->dataPCMD.pitch = 0;
+		deviceManager->dataPCMD.yaw = 0;
+		deviceManager->dataPCMD.gaz = 0;
+		deviceManager->dataCam.pan = 0;
+		deviceManager->dataCam.tilt = 0;
+		deviceManager->currentRoll = 0;
+
+	} else {
+		deviceManager->dataPCMD.flag = 1;
+		deviceManager->isFront = 0;
+		directionControl(deviceManager);
+		distanceControl(deviceManager);
+		altitudeControl(deviceManager);
+		rollControl(deviceManager);
+	}
+
+}
+void goToFront(BD_MANAGER_t *deviceManager){
+
+	if(deviceManager->currentROC< SIDE_ROC){
+		deviceManager->isTurn = 2;
+	}
+
+	if(deviceManager->isTurn == 2 && deviceManager->currentROC >= FRONT_ROC - 0.03){
+		deviceManager->isTurn = 0;
+		deviceManager->faceCount = 150;
+	}
+
+	if (deviceManager->isTurn == 1) {
+		deviceManager->dataPCMD.flag = 1;
+		deviceManager->isFront = 0;
+		directionControl(deviceManager);
+		distanceControl(deviceManager);
+		altitudeControl(deviceManager);
+		deviceManager->dataPCMD.roll = 5;	//右に傾ける
+	} else if (deviceManager->isTurn == 2) {
+		deviceManager->dataPCMD.flag = 1;
+		deviceManager->isFront = 0;
+		directionControl(deviceManager);
+		distanceControl(deviceManager);
+		altitudeControl(deviceManager);
+		deviceManager->dataPCMD.roll = 2;	//右に傾ける
+	}
+
+}
+void checkIfTurn(BD_MANAGER_t *deviceManager){
+	//正面にいる
+	if (deviceManager->faceCount <= 0 && deviceManager->isTurn != 2) {
+		deviceManager->isTurn = 1;
+	} else {
+		if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10
+				&& abs(deviceManager->Ecy) < 30
+				&& abs(deviceManager->Ecr) < 0.03) {
+			//顔が見えている
+			if (deviceManager->numOfFace != 0) {
+				//顔カウントが150以内
+				if (deviceManager->faceCount < 150) {
+					//顔カウントを増やす
+					deviceManager->faceCount++;
+				}
+				//顔が見えていない
+			} else {
+				//顔カウントを減らす
+				deviceManager->faceCount--;
+			}
+		}
+	}
+
+
 }

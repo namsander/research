@@ -153,6 +153,7 @@ typedef struct
     int isFront; //正面判定フラグ
     int numOfFace;
     int isTurn;	//0:回り込みなし 1:側面回り込み 2:正面回り込み
+    int faceCount;
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
@@ -248,4 +249,7 @@ void exePca(const Mat input,BD_MANAGER_t *deviceManager);
 template<class T>
 bool areaComparator(const vector<T>& a,const vector<T>& b);
 void plotGraph(BD_MANAGER_t *deviceManager);
+void keepFront(BD_MANAGER_t *deviceManager);
+void goToFront(BD_MANAGER_t *deviceManager);
+void checkIfTurn(BD_MANAGER_t *deviceManager);
 #endif /* _SDK_EXAMPLE_BD_H_ */
