@@ -98,8 +98,9 @@ std::ofstream rocLog;
 #define ERROR_STR_LENGTH 2048
 
 
-#define FRONT_ROC 0.41 //正面向いてる時のROC
-#define SIDE_ROC 0.1 //側面ROC
+#define FRONT_ROC 0.645 //正面向いてる時のROC
+#define SIDE_ROC 0.2 //側面ROC
+#define FACE_COUNT 90
 #define Kpp 0.01
 #define Kpi 0.0000
 #define Kpd 0.6
@@ -664,13 +665,19 @@ int main (int argc, char *argv[])
 		deviceManager->rollSeved = 0;
 		deviceManager->numOfFace = 0;
 		deviceManager->isTurn = 0;
-		deviceManager->faceCount = 150;	//5秒分
+		deviceManager->faceCount = FACE_COUNT;	//5秒分
+		deviceManager->autoFlag = 0;
+		deviceManager->logCount = 0;
+		deviceManager->firstTime = 0;
+
 
 		for(int i = 0;i < 6;i++){
 			deviceManager->rocArray[i] = 0.0;
 		}
 
 		deviceManager->gp = popen("gnuplot -persist","w"); //グラフ描画用のパイプを開き、gnuplotを立ち上げる
+		deviceManager->fp = fopen("log.txt","w");
+		fprintf(deviceManager->fp,"#\tFrame\tFaceNum\tFEV\t\tX\tY\tROC\tTime\n");
 		//deviceManager->ROC = vector<double>(0.0,0.0);
 		//deviceManager->rocCount = -1;
 		deviceManager->cameraCount = 0;
@@ -856,6 +863,7 @@ int main (int argc, char *argv[])
         stopDecoder (deviceManager);
         stopNetwork (deviceManager);
         fclose (deviceManager->video_out);
+        fclose(deviceManager->fp);
         fprintf(deviceManager->gp,"exit\n");	//パイプを通してgnuplotを終了させる
         fflush(deviceManager->gp);
         pclose(deviceManager->gp);	//パイプを閉じる
@@ -1902,6 +1910,7 @@ void onInputEvent(eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat inf
 	BD_MANAGER_t *deviceManager = (BD_MANAGER_t *) customData;
 	stringstream pitch;
 	pitch << "tilt:" <<deviceManager->dataCam.tilt;
+	deviceManager->autoFlag = autoFlag;
 	if (autoFlag == 1) {
 		autonomousFlying(event, deviceManager,infoWindow);
 	} else {
@@ -1910,7 +1919,7 @@ void onInputEvent(eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat inf
 		}else{
 			deviceManager->isFront = 0;
 		}
-		deviceManager->faceCount = 150;
+		deviceManager->faceCount = FACE_COUNT;
 		deviceManager->isTurn = 0;
 		deviceManager->currentRoll = 0;
 		putText(infoWindow,"controlled flying",Point(184,320),FONT_ITALIC,1.2,Scalar(255,200,100),2,CV_AA);
@@ -2362,6 +2371,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 			//ROCの変化量を計算して代入
 			deviceManager->rocArray[deviceManager->rocCount] =
 					deviceManager->currentROC - deviceManager->pastROC;
+
 			/*
 			 //ROCの変化量が正なら1負なら-1
 			 if((deviceManager->currentROC - deviceManager->pastROC) > 0){
@@ -2607,6 +2617,27 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	//imshow("h",channels[0]);
 	//imshow("s",channels[1]);
 	//imshow("v",channels[2]);
+	//現在時刻(秒)取得
+	clock_gettime(CLOCK_REALTIME,&deviceManager->ts);
+	//firstTime初期化
+	if (deviceManager->firstTime == 0 && deviceManager->autoFlag == 1) {
+		deviceManager->firstTime = deviceManager->ts.tv_sec;
+	}
+	//ログファイル出力
+	if (deviceManager->autoFlag == 1 && deviceManager->stats.size() > 1) {
+		fprintf(deviceManager->fp, "\t%d\t%d\t%lf\t%d\t%d\t%lf\t%ld.%09ld\n",
+				deviceManager->logCount, deviceManager->numOfFace,
+				deviceManager->firstEV, deviceManager->stats[1][CENTER_X],
+				deviceManager->stats[1][CENTER_Y], deviceManager->currentROC,
+				deviceManager->ts.tv_sec - deviceManager->firstTime,
+				deviceManager->ts.tv_nsec);
+		deviceManager->logCount++;
+	}else if(deviceManager->autoFlag == 1 && deviceManager->stats.size() <= 1){
+		fprintf(deviceManager->fp, "\t%d\t%d\t%lf\t%d\t%d\t%lf\t%ld.%09ld\n",
+				deviceManager->logCount,0,0,0,0,0,deviceManager->ts.tv_sec - deviceManager->firstTime,deviceManager->ts.tv_nsec);
+		deviceManager->logCount++;
+	}
+
 	key = waitKey(1);
 
 	switch (key) {
@@ -3320,7 +3351,7 @@ bool areaComparator(const vector<T>& a,const vector<T>& b){
 void keepFront(BD_MANAGER_t *deviceManager) {
 
 	if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10
-			&& abs(deviceManager->Ecy) < 30 && abs(deviceManager->Ecr) < 0.01
+			&& abs(deviceManager->Ecy) < 30 && abs(deviceManager->Ecr) < 0.03
 			) {
 
 		deviceManager->isFront = 1;
@@ -3351,7 +3382,7 @@ void goToFront(BD_MANAGER_t *deviceManager){
 
 	if(deviceManager->isTurn == 2 && deviceManager->currentROC >= FRONT_ROC - 0.03){
 		deviceManager->isTurn = 0;
-		deviceManager->faceCount = 150;
+		deviceManager->faceCount = FACE_COUNT;
 	}
 
 	if (deviceManager->isTurn == 1) {
@@ -3360,14 +3391,14 @@ void goToFront(BD_MANAGER_t *deviceManager){
 		directionControl(deviceManager);
 		distanceControl(deviceManager);
 		altitudeControl(deviceManager);
-		deviceManager->dataPCMD.roll = 5;	//右に傾ける
+		deviceManager->dataPCMD.roll = -5;	//左に傾ける
 	} else if (deviceManager->isTurn == 2) {
 		deviceManager->dataPCMD.flag = 1;
 		deviceManager->isFront = 0;
 		directionControl(deviceManager);
 		distanceControl(deviceManager);
 		altitudeControl(deviceManager);
-		deviceManager->dataPCMD.roll = 2;	//右に傾ける
+		deviceManager->dataPCMD.roll = -5;	//左に傾ける
 	}
 
 }
@@ -3382,7 +3413,7 @@ void checkIfTurn(BD_MANAGER_t *deviceManager){
 			//顔が見えている
 			if (deviceManager->numOfFace != 0) {
 				//顔カウントが150以内
-				if (deviceManager->faceCount < 150) {
+				if (deviceManager->faceCount < FACE_COUNT) {
 					//顔カウントを増やす
 					deviceManager->faceCount++;
 				}

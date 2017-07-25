@@ -35,6 +35,8 @@
 #include "ihm.h"
 #include "DecoderManager.h"
 #include <libARCommands/ARCommands.h>
+#include <time.h>
+
 using namespace std;
 
 typedef struct
@@ -125,7 +127,7 @@ typedef struct
     vector<vector<int> > stats;
     vector<vector<int> >eigenvectors;
     vector<vector<double> > contVariable;
-    FILE *video_out,*gp; //*gpはグラフ描画用のパイプのためのFP
+    FILE *video_out,*gp,*fp; //*gpはグラフ描画用のパイプのためのFP
 
     ARSAL_Mutex_t mutex;
 
@@ -136,6 +138,7 @@ typedef struct
     CascadeClassifier faceCascade;
     CascadeClassifier fullbodyCascade;
     CascadeClassifier upperbodyCascade;
+    struct timespec ts;
     int imageFlag;	//画像処理実行フラグ
     bool findFace;	//顔発見フラグ
     bool downPPH;	//ピクセル/高さ　が下がったか
@@ -154,6 +157,9 @@ typedef struct
     int numOfFace;
     int isTurn;	//0:回り込みなし 1:側面回り込み 2:正面回り込み
     int faceCount;
+    int autoFlag;
+    int logCount;
+    int firstTime;	//logFileの最初の時間を記憶するためのフラグ
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;
