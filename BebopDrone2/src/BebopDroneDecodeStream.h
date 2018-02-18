@@ -86,7 +86,14 @@ public:
 	}
 
 };
+enum eventType{
+	UNDETECTED,
+	ERROR_CONTROL,
+	FACE_DETECTION,
+	DECREASE_EV,
+	INCREASE_EV
 
+};
 typedef struct
 {
     ARNETWORKAL_Manager_t *alManager;
@@ -159,7 +166,10 @@ typedef struct
     int faceCount;
     int autoFlag;
     int logCount;
-    int firstTime;	//logFileの最初の時間を記憶するためのフラグ
+    long firstSec,firstNsec,sec,nsec;	//logFileの最初の時間を記憶するためのフラグ
+    int currentLogCount;
+    int pastLogCount;
+    eventType event;
     //int rocCount;
     float speedX,speedY,speedZ,roll,pitch,yaw,maxTilt,minTilt,currentTilt,maxRotationSpeed,minRotationSpeed,
 	currentRotationSpeed,maxVerticalSpeed,minVerticalSpeed,currentVerticalSpeed;

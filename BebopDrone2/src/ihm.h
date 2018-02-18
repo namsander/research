@@ -56,6 +56,7 @@ typedef enum
     IHM_INPUT_EVENT_TAKEOFF_LANDING,
     IHM_INPUT_EVENT_EMERGENCY,
 	IHM_INPUT_EVENT_AUTONOMOUS,
+	IHM_INPUT_EVENT_LOG,
 }eIHM_INPUT_EVENT;
 
 typedef void (*IHM_onInputEvent_t) (eIHM_INPUT_EVENT event, void *customData,int autoFlag,Mat infoWindow);

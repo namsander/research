@@ -98,8 +98,9 @@ std::ofstream rocLog;
 #define ERROR_STR_LENGTH 2048
 
 
-#define FRONT_ROC 0.645 //正面向いてる時のROC
+#define FRONT_ROC 0.65 //正面向いてる時のROC
 #define SIDE_ROC 0.2 //側面ROC
+#define FRONT_EV 1000 //正面固有値
 #define FACE_COUNT 90
 #define Kpp 0.01
 #define Kpi 0.0000
@@ -122,7 +123,8 @@ std::ofstream rocLog;
 enum ContType {
 	CT_yaw,
 	CT_pitch,
-	CT_gaz
+	CT_gaz,
+	CT_r
 };
 
 #define FIFO_DIR_PATTERN "/tmp/arsdk_XXXXXX"
@@ -428,7 +430,8 @@ void* Decode_RunDataThread(void *customData)
                 }
 
 				if (decodedOut != NULL) {
-					fwrite(decodedOut, pic_size, 1, deviceManager->video_out);
+					//消すと軽くなる可能性がある
+					//fwrite(decodedOut, pic_size, 1, deviceManager->video_out);
 
 //					if (deviceManager->imageFlag == 2) {
 //						deviceManager->imageFlag = deviceManager->imageFlag % 2;
@@ -614,7 +617,7 @@ int main (int argc, char *argv[])
 		deviceManager->currentROC = 0.0;
 		deviceManager->eigenvectors = vector<vector<int> >(2,
 				vector<int>(2, 0));
-		deviceManager->contVariable = vector<vector<double> >(3,vector<double>(300,0));	//4行300列の2次元vector初期化
+		deviceManager->contVariable = vector<vector<double> >(4,vector<double>(300,0));	//4行300列の2次元vector初期化
 		deviceManager->ROCFlag = false;
 		deviceManager->differenceROC = 0.0;
 		deviceManager->pastDifferenceROC = 0.0;
@@ -668,7 +671,13 @@ int main (int argc, char *argv[])
 		deviceManager->faceCount = FACE_COUNT;	//5秒分
 		deviceManager->autoFlag = 0;
 		deviceManager->logCount = 0;
-		deviceManager->firstTime = 0;
+		deviceManager->firstSec = 0;
+		deviceManager->firstNsec = 0;
+		deviceManager->currentLogCount = 1;
+		deviceManager->pastLogCount = 0;
+		deviceManager->sec = 0;
+		deviceManager->nsec = 0;
+		deviceManager->event = UNDETECTED;
 
 
 		for(int i = 0;i < 6;i++){
@@ -676,8 +685,6 @@ int main (int argc, char *argv[])
 		}
 
 		deviceManager->gp = popen("gnuplot -persist","w"); //グラフ描画用のパイプを開き、gnuplotを立ち上げる
-		deviceManager->fp = fopen("log.txt","w");
-		fprintf(deviceManager->fp,"#\tFrame\tFaceNum\tFEV\t\tX\tY\tROC\tTime\n");
 		//deviceManager->ROC = vector<double>(0.0,0.0);
 		//deviceManager->rocCount = -1;
 		deviceManager->cameraCount = 0;
@@ -863,7 +870,9 @@ int main (int argc, char *argv[])
         stopDecoder (deviceManager);
         stopNetwork (deviceManager);
         fclose (deviceManager->video_out);
-        fclose(deviceManager->fp);
+        if(deviceManager->fp != NULL){
+        	fclose(deviceManager->fp);
+        }
         fprintf(deviceManager->gp,"exit\n");	//パイプを通してgnuplotを終了させる
         fflush(deviceManager->gp);
         pclose(deviceManager->gp);	//パイプを閉じる
@@ -1914,6 +1923,7 @@ void onInputEvent(eIHM_INPUT_EVENT event, void *customData, int autoFlag,Mat inf
 	if (autoFlag == 1) {
 		autonomousFlying(event, deviceManager,infoWindow);
 	} else {
+		deviceManager->event = UNDETECTED;
 		if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10 && abs(deviceManager->Ecy) < 30	&& abs(deviceManager->Ecr) < 0.01) {
 			deviceManager->isFront = 1;
 		}else{
@@ -2190,7 +2200,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	int count = 0;
 	int coordinateNum = 0;
 	int key = 0;
-	stringstream ssFaceRectSize;
+	stringstream ssFaceRectSize,logFileName;
 
 	deviceManager->cameraCount++;
 	cvtColor(yuvImage,bgrImage,CV_YUV420p2RGB); //yuvをbgrに変換
@@ -2350,7 +2360,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		//各データ更新部
 		deviceManager->firstEV = pca.eigenvalues.at<double>(0);
 		deviceManager->secondEV = pca.eigenvalues.at<double>(1);
-		deviceManager->Ece = 1000.0 - deviceManager->firstEV;	//現在の第一固有値の偏差
+		deviceManager->Ece = FRONT_EV - deviceManager->firstEV;	//現在の第一固有値の偏差
 		deviceManager->Ese += deviceManager->Ece;	//第一固有値の累計偏差
 
 		deviceManager->currentX = pixToDig(deviceManager->stats[1][CENTER_X]);
@@ -2425,7 +2435,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		ssPrint[15] << "isFront:" << deviceManager->isFront;
 		ssPrint[16] << "numOfFace:" << deviceManager->numOfFace;
 		ssPrint[17] << "faceCount:" << deviceManager->faceCount;
-		ssPrint[18] << "isTurn:" << deviceManager->isTurn;
+		ssPrint[18] << "isTurn:" << deviceManager->isTurn <<  "  currentLogCount:" << deviceManager->currentLogCount << "    pastLogCount:" << deviceManager->pastLogCount;
 
 		//PID制御実験
 		ssPID[0] << "Mp:" << deviceManager->Mp << "Mpp:" << deviceManager->Mpp
@@ -2501,6 +2511,10 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 		deviceManager->Epr = 0;
 
 		deviceManager->isFront = 0;
+		deviceManager->isTurn = 0;
+		deviceManager->faceCount = FACE_COUNT;
+
+		deviceManager->event = UNDETECTED;
 
 		//瞳検出時の顔画像範囲
 		cutFace = Mat(gray,Rect(0,0,30,30)).clone();
@@ -2590,7 +2604,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 			Scalar(255, 255, 255));
 	putText(print, ssPrint[17].str(), Point(0, 350), 0, 0.5,
 			Scalar(255, 255, 255));
-	putText(print, ssPrint[18].str(), Point(0, 370), 0, 0.5,
+	putText(print,ssPrint[18].str(), Point(0, 370), 0, 0.5,
 			Scalar(255, 255, 255));
 
 	/*
@@ -2609,7 +2623,7 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	imshow("binary", binary);
 	imshow("frame", print);
 	imshow("face", cutFace);
-	//imshow("bgrImage",bgrImage);
+	imshow("bgrImage",bgrImage);
 	//imshow("blur",blur);
 	imshow("label", dst);
 	//imshow("gray",gray);
@@ -2618,24 +2632,84 @@ void imageProc2(uint8_t* frame,HOGDescriptor hog,BD_MANAGER_t *deviceManager){
 	//imshow("s",channels[1]);
 	//imshow("v",channels[2]);
 	//現在時刻(秒)取得
-	clock_gettime(CLOCK_REALTIME,&deviceManager->ts);
-	//firstTime初期化
-	if (deviceManager->firstTime == 0 && deviceManager->autoFlag == 1) {
-		deviceManager->firstTime = deviceManager->ts.tv_sec;
+	clock_gettime(CLOCK_MONOTONIC,&deviceManager->ts);
+	if(deviceManager->currentLogCount != deviceManager->pastLogCount && deviceManager->autoFlag == 1){
+
+		//姿勢実験以外では消す
+		deviceManager->logCount = 0;
+		if(deviceManager->fp != NULL){
+			fclose(deviceManager->fp);
+		}
+		logFileName << deviceManager->currentLogCount << ".csv";
+		deviceManager->fp = fopen(logFileName.str().c_str(),"w");
+		deviceManager->pastLogCount = deviceManager->currentLogCount;
+		//firstTime初期化
+		deviceManager->firstSec = deviceManager->ts.tv_sec;
+		deviceManager->firstNsec = deviceManager->ts.tv_nsec;
+		fprintf(deviceManager->fp,"Frame,FaceNum,FEV,X,Y,ROC,Left,Top,Right,Bottom,Area,Time,EventType,hight,widht,width/hight\r\n");
+		logFileName.str("");
+		logFileName.clear();
+		logFileName << deviceManager->currentLogCount << "color.jpg";
+		imwrite(logFileName.str().c_str(),bgrImage);
+		logFileName.str("");
+		logFileName.clear();
+		logFileName << deviceManager->currentLogCount << "binary.jpg";
+		imwrite(logFileName.str().c_str(),binary);
+		logFileName.str("");
+		logFileName.clear();
 	}
 	//ログファイル出力
-	if (deviceManager->autoFlag == 1 && deviceManager->stats.size() > 1) {
-		fprintf(deviceManager->fp, "\t%d\t%d\t%lf\t%d\t%d\t%lf\t%ld.%09ld\n",
-				deviceManager->logCount, deviceManager->numOfFace,
-				deviceManager->firstEV, deviceManager->stats[1][CENTER_X],
-				deviceManager->stats[1][CENTER_Y], deviceManager->currentROC,
-				deviceManager->ts.tv_sec - deviceManager->firstTime,
-				deviceManager->ts.tv_nsec);
-		deviceManager->logCount++;
-	}else if(deviceManager->autoFlag == 1 && deviceManager->stats.size() <= 1){
-		fprintf(deviceManager->fp, "\t%d\t%d\t%lf\t%d\t%d\t%lf\t%ld.%09ld\n",
-				deviceManager->logCount,0,0,0,0,0,deviceManager->ts.tv_sec - deviceManager->firstTime,deviceManager->ts.tv_nsec);
-		deviceManager->logCount++;
+	if (deviceManager->autoFlag
+			== 1&& deviceManager->stats.size() > 1 && deviceManager->fp != NULL) {
+		//姿勢実験以外では消す
+		if (deviceManager->logCount < 30) {
+			if(deviceManager->ts.tv_nsec < deviceManager->firstNsec){
+				deviceManager->sec = deviceManager->ts.tv_sec - deviceManager->firstSec -1;
+				deviceManager->nsec = 1000000000L - deviceManager->firstNsec + deviceManager->ts.tv_nsec;
+			}else{
+				deviceManager->sec = deviceManager->ts.tv_sec - deviceManager->firstSec;
+				deviceManager->nsec = deviceManager->ts.tv_nsec -deviceManager->firstNsec;
+			}
+
+			fprintf(deviceManager->fp,
+					"%d,%d,%lf,%d,%d,%lf,%d,%d,%d,%d,%d,%ld.%09ld,%d,%d,%d,%lf\r\n",
+					deviceManager->logCount, deviceManager->numOfFace,
+					deviceManager->firstEV, deviceManager->stats[1][CENTER_X],
+					deviceManager->stats[1][CENTER_Y],
+					deviceManager->currentROC,
+					deviceManager->stats[1][CC_STAT_LEFT],
+					deviceManager->stats[1][CC_STAT_TOP],
+					deviceManager->stats[1][CC_STAT_LEFT]
+							+ deviceManager->stats[1][CC_STAT_WIDTH],
+					deviceManager->stats[1][CC_STAT_TOP]
+							+ deviceManager->stats[1][CC_STAT_HEIGHT],
+					deviceManager->stats[1][CC_STAT_HEIGHT]
+							* deviceManager->stats[1][CC_STAT_WIDTH],
+					deviceManager->sec, deviceManager->nsec,
+					deviceManager->event,
+					deviceManager->stats[1][CC_STAT_HEIGHT],
+					deviceManager->stats[1][CC_STAT_WIDTH],
+					deviceManager->stats[1][CC_STAT_WIDTH]
+							/ deviceManager->stats[1][CC_STAT_HEIGHT]);
+			deviceManager->logCount++;
+		}
+
+	} else if (deviceManager->autoFlag
+			== 1&& deviceManager->stats.size() <= 1 && deviceManager->fp != NULL) {
+		//姿勢実験以外では消す
+		if (deviceManager->logCount < 30) {
+
+			if(deviceManager->ts.tv_nsec < deviceManager->firstNsec){
+				deviceManager->sec = deviceManager->ts.tv_sec - deviceManager->firstSec -1;
+				deviceManager->nsec = 1000000000L - deviceManager->firstNsec + deviceManager->ts.tv_nsec;
+			}else{
+				deviceManager->sec = deviceManager->ts.tv_sec - deviceManager->firstSec;
+				deviceManager->nsec = deviceManager->ts.tv_nsec -deviceManager->firstNsec;
+			}
+
+			fprintf(deviceManager->fp,"%d,%d,%lf,%d,%d,%lf,%d,%d,%d,%d,%d,%ld.%09ld,%d,%d,%d,%lf\r\n",deviceManager->logCount, 0, 0, 0.0, 0, 0, 0.0, 0, 0, 0, 0,deviceManager->sec,deviceManager->nsec,0,0,0,0);
+			deviceManager->logCount++;
+		}
 	}
 
 	key = waitKey(1);
@@ -2702,19 +2776,45 @@ void plotGraph(BD_MANAGER_t *deviceManager){
 		deviceManager->contVariable[CT_yaw][deviceManager->time] = deviceManager->stats[1][CENTER_X];	//グラフ表示用のyaw(0)行time列に人のX座標代入
 		deviceManager->contVariable[CT_gaz][deviceManager->time] = deviceManager->stats[1][CENTER_Y];
 		deviceManager->contVariable[CT_pitch][deviceManager->time] = deviceManager->firstEV;
+		deviceManager->contVariable[CT_r][deviceManager->time] = deviceManager->currentROC;
 	}else{
 		for(int i = 0;i < 299;i++){
 			deviceManager->contVariable[CT_yaw][i] = deviceManager->contVariable[CT_yaw][i+1];
 			deviceManager->contVariable[CT_gaz][i] = deviceManager->contVariable[CT_gaz][i+1];
 			deviceManager->contVariable[CT_pitch][i] = deviceManager->contVariable[CT_pitch][i+1];
+			deviceManager->contVariable[CT_r][i] = deviceManager->contVariable[CT_r][i+1];
 		}
 		deviceManager->contVariable[CT_yaw][deviceManager->time-1] = deviceManager->stats[1][CENTER_X];
 		deviceManager->contVariable[CT_gaz][deviceManager->time-1] = deviceManager->stats[1][CENTER_Y];
 		deviceManager->contVariable[CT_pitch][deviceManager->time-1] = deviceManager->firstEV;
+		deviceManager->contVariable[CT_r][deviceManager->time-1] = deviceManager->currentROC;
 	}
 
 	switch(deviceManager->plotType){
 	case 0:
+		fprintf(deviceManager->gp,"set xrange [0:300]\n");	//範囲の指定
+		fprintf(deviceManager->gp,"set yrange [0:1]\n");
+		fprintf(deviceManager->gp,"set xlabel \"time\"\n");	//ラベル表示
+		fprintf(deviceManager->gp,"set ylabel \"r\"\n");
+		fprintf(deviceManager->gp,"set xtics 0,30,300\n");	//x軸メモリ設定
+		fprintf(deviceManager->gp,"set grid xtics\n");	//x軸グリッド線設定
+		fprintf(deviceManager->gp,"set style arrow 1 nohead\n");	//矢印の頭消す設定
+		fprintf(deviceManager->gp,"set arrow 1 from 0,0.2 to 300,0.2 arrowstyle 1\n");	//矢印の描画範囲設定
+		fprintf(deviceManager->gp,"set arrow 2 from 0,0.67 to 300,0.67 arrowstyle 1\n");	//矢印の描画範囲設定
+		fprintf(deviceManager->gp,"set time\n");	//現在時刻表示
+
+		//描画データ入力
+		fprintf(deviceManager->gp,"plot '-' with lines linetype 1\n");
+		j = 0;
+		do{
+			fprintf(deviceManager->gp,"%f\t%f\n",(double)j,deviceManager->contVariable[CT_r][j]);
+			j++;
+		}while(j < deviceManager->time);
+		//描画実行
+		fprintf(deviceManager->gp,"e\n");
+
+
+		/*
 		//描画設定
 		fprintf(deviceManager->gp,"set xrange [0:300]\n");	//範囲の指定
 		fprintf(deviceManager->gp,"set yrange [0:640]\n");
@@ -2735,7 +2835,7 @@ void plotGraph(BD_MANAGER_t *deviceManager){
 		}while(j < deviceManager->time);
 		//描画実行
 		fprintf(deviceManager->gp,"e\n");
-
+		*/
 		break;
 
 	case 1:
@@ -2743,7 +2843,7 @@ void plotGraph(BD_MANAGER_t *deviceManager){
 		fprintf(deviceManager->gp,"set xrange [0:300]\n");	//範囲の指定
 		fprintf(deviceManager->gp,"set yrange [0:2000]\n");
 		fprintf(deviceManager->gp,"set xlabel \"time\"\n");	//ラベル表示
-		fprintf(deviceManager->gp,"set ylabel \"eigenvalue\"\n");
+		fprintf(deviceManager->gp,"set ylabel \"d\"\n");
 		fprintf(deviceManager->gp,"set xtics 0,30,300\n");
 		fprintf(deviceManager->gp,"set grid xtics\n");
 		fprintf(deviceManager->gp,"set style arrow 1 nohead\n");
@@ -2897,7 +2997,11 @@ void autonomousFlying (eIHM_INPUT_EVENT event,BD_MANAGER_t *deviceManager,Mat in
 			deviceManager->dataPCMD.roll = -10;
 		}
 		break;
-
+	case IHM_INPUT_EVENT_LOG:
+		if(deviceManager != NULL){
+			deviceManager->currentLogCount++;
+		}
+		break;
 	case IHM_INPUT_EVENT_NONE:
 		deviceManager->dataPCMD.flag = 0;
 		deviceManager->dataPCMD.roll = 0;
@@ -3351,9 +3455,9 @@ bool areaComparator(const vector<T>& a,const vector<T>& b){
 void keepFront(BD_MANAGER_t *deviceManager) {
 
 	if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10
-			&& abs(deviceManager->Ecy) < 30 && abs(deviceManager->Ecr) < 0.03
+			&& abs(deviceManager->Ecy) < 30 && abs(deviceManager->Ecr) < 0.07
 			) {
-
+		deviceManager->event = FACE_DETECTION;
 		deviceManager->isFront = 1;
 		deviceManager->dataPCMD.flag = 0;
 		deviceManager->dataPCMD.roll = 0;
@@ -3365,6 +3469,7 @@ void keepFront(BD_MANAGER_t *deviceManager) {
 		deviceManager->currentRoll = 0;
 
 	} else {
+		deviceManager->event = ERROR_CONTROL;
 		deviceManager->dataPCMD.flag = 1;
 		deviceManager->isFront = 0;
 		directionControl(deviceManager);
@@ -3378,11 +3483,13 @@ void goToFront(BD_MANAGER_t *deviceManager){
 
 	if(deviceManager->currentROC< SIDE_ROC){
 		deviceManager->isTurn = 2;
+		deviceManager->event = INCREASE_EV;
 	}
 
-	if(deviceManager->isTurn == 2 && deviceManager->currentROC >= FRONT_ROC - 0.03){
+	if(deviceManager->isTurn == 2 && deviceManager->currentROC >= FRONT_ROC - 0.07){
 		deviceManager->isTurn = 0;
 		deviceManager->faceCount = FACE_COUNT;
+		deviceManager->event = ERROR_CONTROL;
 	}
 
 	if (deviceManager->isTurn == 1) {
@@ -3406,10 +3513,11 @@ void checkIfTurn(BD_MANAGER_t *deviceManager){
 	//正面にいる
 	if (deviceManager->faceCount <= 0 && deviceManager->isTurn != 2) {
 		deviceManager->isTurn = 1;
+		deviceManager->event = DECREASE_EV;
 	} else {
 		if (abs(deviceManager->Ece) <= 250 && abs(deviceManager->Ecx) <= 10
 				&& abs(deviceManager->Ecy) < 30
-				&& abs(deviceManager->Ecr) < 0.03) {
+				&& abs(deviceManager->Ecr) < 0.07) {
 			//顔が見えている
 			if (deviceManager->numOfFace != 0) {
 				//顔カウントが150以内

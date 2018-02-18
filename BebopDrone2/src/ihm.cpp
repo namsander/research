@@ -264,7 +264,13 @@ void *IHM_InputProcessing(void *data) {
 					ihm->onInputEventCallback(IHM_INPUT_EVENT_TAKEOFF_LANDING,
 							ihm->customData,ihm->autonomousFlag,infoWindow);
 				}
-			} else {
+			} else if(key == KEY_BACKSPACE){
+				if (ihm->onInputEventCallback != NULL) {
+					ihm->onInputEventCallback(IHM_INPUT_EVENT_LOG,
+							ihm->customData,ihm->autonomousFlag,infoWindow);
+				}
+
+			}else {
 				if (ihm->onInputEventCallback != NULL) {
 					ihm->onInputEventCallback(IHM_INPUT_EVENT_NONE,
 							ihm->customData,ihm->autonomousFlag,infoWindow);
